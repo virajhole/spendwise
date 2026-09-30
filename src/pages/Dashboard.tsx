@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
 import Header from "../components/Header";
 import SummaryCard from "../components/SummaryCard";
 import AlertBanner from "../components/AlertBanner";
@@ -18,7 +16,6 @@ export default function Dashboard() {
   const transactions = useTransactions();
   const categories = useCategories();
   const budget = useBudget(month);
-  const [flash, setFlash] = useState(false);
   const haptic = useHaptics();
 
   const monthTxs = (transactions ?? []).filter((t) => t.date.startsWith(month));
@@ -28,9 +25,6 @@ export default function Dashboard() {
 
   const handleSubmit = async (input: { amount: number; note: string; categoryId: string }) => {
     await saveExpense({ ...input, date: todayISO(), time: currentTime() });
-    setFlash(true);
-    haptic([15, 30]);
-    setTimeout(() => setFlash(false), 400);
   };
 
   return (
@@ -75,21 +69,6 @@ export default function Dashboard() {
           if (editing) void deleteExpense(editing.id);
         }}
       />
-
-      {/* subtle flash animation on the summary when a new expense is added */}
-      <AnimateFlash flash={flash} />
     </div>
   );
-}
-
-function AnimateFlash({ flash }: { flash: boolean }) {
-  return flash ? (
-    <motion.div
-      initial={{ opacity: 0.35 }}
-      animate={{ opacity: 0 }}
-      transition={{ duration: 0.4 }}
-      className="pointer-events-none fixed inset-0 z-30 bg-teal-400"
-      aria-hidden
-    />
-  ) : null;
 }

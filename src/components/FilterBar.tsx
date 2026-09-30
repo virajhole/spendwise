@@ -11,17 +11,17 @@ export default function FilterBar({ categories }: Props) {
   const active = search || filterCategory;
 
   return (
-    <div className="px-4 pb-2">
+    <div className="px-4 pb-3 pt-4">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
+          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search notes…"
             aria-label="Search transactions"
-            className="w-full rounded-full border border-slate-200 bg-white py-2 pl-9 pr-3 text-[15px] outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-900"
+            className="w-full rounded-full border border-slate-200 bg-white py-3 pl-10 pr-4 text-[15px] outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-900"
           />
         </div>
         {active ? (
@@ -31,13 +31,13 @@ export default function FilterBar({ categories }: Props) {
               setFilterCategory(null);
             }}
             aria-label="Clear filters"
-            className="rounded-full bg-slate-200 p-2 dark:bg-slate-800"
+            className="rounded-full bg-slate-200 p-2.5 dark:bg-slate-800"
           >
             <X size={16} aria-hidden />
           </button>
         ) : null}
       </div>
-      <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto" role="group" aria-label="Filter by category">
+      <div className="no-scrollbar mt-2.5 flex gap-1.5 overflow-x-auto" role="group" aria-label="Filter by category">
         {categories.map((c) => (
           <button
             key={c.id}

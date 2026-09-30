@@ -18,7 +18,9 @@ interface Props {
 export default function InputPad({ categories, currency, collapsed, onToggleCollapsed, onSubmit }: Props) {
   const [display, setDisplay] = useState("");
   const [note, setNote] = useState("");
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "other");
+  // Neutral default category — stable regardless of when the category list loads.
+  const DEFAULT_CATEGORY = "other";
+  const [categoryId, setCategoryId] = useState(DEFAULT_CATEGORY);
   const [error, setError] = useState(false);
   const haptic = useHaptics();
   const reducedMotion = usePrefersReducedMotion();
@@ -42,13 +44,17 @@ export default function InputPad({ categories, currency, collapsed, onToggleColl
     const amount = Number(display);
     if (!amount || amount <= 0) {
       setError(true);
-      haptic([40, 60, 40]);
+      haptic([10, 30, 10]);
+      setTimeout(() => setError(false), 600);
       return;
     }
-    haptic([15, 30]);
+    setError(false);
+    haptic(10);
     onSubmit({ amount, note: note.trim(), categoryId });
+    // Reset the whole pad — amount, note, and category chip — for the next entry.
     setDisplay("");
     setNote("");
+    setCategoryId(DEFAULT_CATEGORY);
   };
 
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "back"];
@@ -148,8 +154,8 @@ export default function InputPad({ categories, currency, collapsed, onToggleColl
           whileTap={{ scale: 0.9 }}
           onClick={submit}
           aria-label="Add expense"
-          className={`flex h-16 w-16 items-center justify-center rounded-full bg-teal-600 text-white shadow-lg shadow-teal-600/40 transition-colors active:bg-teal-700 ${
-            error ? "animate-pop bg-red-500" : ""
+          className={`flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg transition-colors active:bg-teal-700 ${
+            error ? "animate-pop bg-red-500 shadow-red-500/40" : "bg-teal-600 shadow-teal-600/40"
           }`}
         >
           <Plus size={30} strokeWidth={2.5} aria-hidden />

@@ -33,7 +33,7 @@ export default function TransactionList({ transactions, categories, currency, on
   const groups = groupByDate(sorted);
 
   const handleDelete = (t: Transaction) => {
-    haptic([20, 30, 20]);
+    haptic(12);
     onDelete(t);
     if (toast) window.clearTimeout(toast.timer);
     const timer = window.setTimeout(() => setToast(null), 5000);

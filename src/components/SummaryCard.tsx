@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, useAnimationControls } from "framer-motion";
 import { Pencil } from "lucide-react";
 import type { Category, Transaction } from "../db/db";
 import { budgetUsedPct, remainingBalance, totalExpense } from "../utils/calc";
@@ -18,6 +18,8 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const haptic = useHaptics();
+  const controls = useAnimationControls();
+  const firstTotal = useRef(true);
 
   const monthTxs = (transactions ?? []).filter((t) => t.date.startsWith(month));
   const total = totalExpense(monthTxs);
@@ -27,9 +29,21 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
   const over = remaining < 0 && b > 0;
   const barColor = pct >= 100 ? "#ef4444" : pct >= 80 ? "#f97316" : "#0ea5a4";
 
+  // Gentle pulse on the Total Expense number whenever it changes (skip first mount).
+  useEffect(() => {
+    if (firstTotal.current) {
+      firstTotal.current = false;
+      return;
+    }
+    controls.start({
+      scale: [1, 1.12, 1],
+      transition: { duration: 0.3, ease: "easeOut" },
+    });
+  }, [total, controls]);
+
   const save = () => {
     const v = Number(draft.replace(/[^0-9.]/g, ""));
-    haptic(15);
+    haptic(10);
     onSetBudget(v > 0 ? v : 0);
     setEditing(false);
   };
@@ -75,7 +89,9 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
           </div>
           <div className="text-right">
             <p className="text-xs font-medium uppercase tracking-wide text-teal-100/80">Total Expense</p>
-            <p className="text-2xl font-bold">{formatAmount(total, currency)}</p>
+            <motion.p animate={controls} className="origin-right text-2xl font-bold tabular-nums">
+              {formatAmount(total, currency)}
+            </motion.p>
           </div>
         </div>
 
