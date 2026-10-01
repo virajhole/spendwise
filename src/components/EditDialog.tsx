@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Trash2, X } from "lucide-react";
-import type { Category, Transaction } from "../db/db";
+import type { Category, Transaction } from "../db/types";
 
 interface Props {
   tx: Transaction | null;
@@ -72,6 +72,7 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              maxLength={200}
               className="mt-1 w-full rounded-xl bg-slate-100 px-3 py-2.5 outline-none focus:ring-2 focus:ring-teal-500 dark:bg-slate-800"
             />
 

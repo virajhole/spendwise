@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, ChevronUp, Plus } from "lucide-react";
-import type { Category } from "../db/db";
+import type { Category } from "../db/types";
 import { formatAmount } from "../utils/format";
 import { useHaptics } from "../hooks/useHaptics";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
@@ -24,6 +24,15 @@ export default function InputPad({ categories, currency, collapsed, onToggleColl
   const [error, setError] = useState(false);
   const haptic = useHaptics();
   const reducedMotion = usePrefersReducedMotion();
+
+  // Once categories are available, move the selection onto the real
+  // "Other" category (cloud ids are UUIDs, not the legacy "other" literal).
+  useEffect(() => {
+    if (!categories.some((c) => c.id === categoryId)) {
+      setCategoryId(categories.find((c) => c.name.toLowerCase() === DEFAULT_CATEGORY)?.id ?? categories[0]?.id ?? DEFAULT_CATEGORY);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
 
   const press = (key: string) => {
     haptic(8);

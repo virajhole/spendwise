@@ -1,5 +1,7 @@
 import Header from "../components/Header";
-import { useBudget, useCategories, useStore, useTransactions } from "../store/store";
+import { SkeletonBlock } from "../components/Skeletons";
+import { useBudget, useCategories, useTransactions } from "../store/data";
+import { useStore } from "../store/store";
 import { avgPerDay, byCategory, dailySpend, inMonth, monthLabel, projectedMonthEnd, totalExpense } from "../utils/calc";
 import { formatAmount } from "../utils/format";
 
@@ -25,6 +27,22 @@ export default function Stats() {
   const R = 56;
   const C = 2 * Math.PI * R;
   let acc = 0;
+
+  if (transactions === undefined) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Header month={month} />
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-6 pt-2" aria-label="Loading stats" role="status">
+          <SkeletonBlock className="h-[212px] animate-pulse" />
+          <SkeletonBlock className="h-[168px] animate-pulse" />
+          <div className="grid grid-cols-2 gap-3">
+            <SkeletonBlock className="h-[88px] animate-pulse" />
+            <SkeletonBlock className="h-[88px] animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

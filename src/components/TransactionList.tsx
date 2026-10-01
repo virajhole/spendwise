@@ -2,11 +2,12 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDragControls, type PanInfo } from "framer-motion";
 import { ReceiptText } from "lucide-react";
-import type { Category, Transaction } from "../db/db";
+import type { Category, Transaction } from "../db/types";
 import { groupByDate, sortByNewest } from "../utils/calc";
 import { formatAmount, formatTime } from "../utils/format";
 import { useHaptics } from "../hooks/useHaptics";
 import { useStore } from "../store/store";
+import { SkeletonRows } from "./Skeletons";
 
 interface Props {
   transactions: Transaction[] | undefined;
@@ -42,7 +43,9 @@ export default function TransactionList({ transactions, categories, currency, on
 
   return (
     <div className="relative min-h-[120px] px-4 pb-4" aria-label="Transactions">
-      {groups.length === 0 && (transactions ?? []).length === 0 ? (
+      {transactions === undefined ? (
+        <SkeletonRows rows={3} />
+      ) : groups.length === 0 && transactions.length === 0 ? (
         <EmptyState filtered={Boolean(search || filterCategory || dateFrom || dateTo)} />
       ) : (
         <AnimatePresence initial={false}>

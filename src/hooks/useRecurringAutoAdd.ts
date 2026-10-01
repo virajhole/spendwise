@@ -1,17 +1,19 @@
 import { useEffect } from "react";
-import { db } from "../db/db";
-import { applyRecurrings } from "../db/seed";
+import { runRecurringAutoAdd, useDataStore } from "../store/data";
 
-/** Runs once on app start: auto-adds due recurring expenses. */
+/** Runs whenever the signed-in user's recurring rules load: auto-adds due ones. */
 export function useRecurringAutoAdd() {
+  const userId = useDataStore((s) => s.userId);
+  const recurrings = useDataStore((s) => s.recurrings);
+
   useEffect(() => {
+    if (!userId || !recurrings) return;
     let cancelled = false;
-    (async () => {
-      const recurrings = await db.recurrings.toArray();
-      if (!cancelled && recurrings.length) await applyRecurrings(recurrings);
+    void (async () => {
+      if (!cancelled) await runRecurringAutoAdd();
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [userId, recurrings]);
 }

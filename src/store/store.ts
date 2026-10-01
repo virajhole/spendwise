@@ -1,9 +1,6 @@
 import { create } from "zustand";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db, type Category, type Recurring, type Transaction } from "../db/db";
-import { repo, uid } from "../db/repo";
-import { shiftMonth, toISODate } from "../utils/calc";
-import { currentTime, todayISO } from "../utils/format";
+import { repo } from "../db/repo";
+import { pushSettingsUpdate } from "./data";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -20,6 +17,8 @@ interface UIState {
   setMonth: (m: string) => void;
   setTheme: (t: ThemeMode) => void;
   setCurrency: (c: string) => void;
+  setThemeLocal: (t: ThemeMode) => void;
+  setCurrencyLocal: (c: string) => void;
   setEditing: (t: Transaction | null) => void;
   toggleCollapsed: () => void;
   setSearch: (s: string) => void;
@@ -27,11 +26,27 @@ interface UIState {
   setDateRange: (from: string | null, to: string | null) => void;
 }
 
-const themeKey = "spendwise.theme";
-const currencyKey = "spendwise.currency";
+type Transaction = import("../db/types").Transaction;
+
+const THEME_KEY = "spendwise.theme";
+const CURRENCY_KEY = "spendwise.currency";
+
+function cacheSetting(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch { /* ignore */ }
+}
+
+function cachedSetting<T extends string>(key: string): T | null {
+  try {
+    return localStorage.getItem(key) as T | null;
+  } catch {
+    return null;
+  }
+}
 
 export const useStore = create<UIState>((set) => ({
-  month: todayISO().slice(0, 7),
+  month: todayMonth(),
   theme: "system",
   currency: "₹",
   editing: null,
@@ -43,12 +58,24 @@ export const useStore = create<UIState>((set) => ({
   setMonth: (m) => set({ month: m }),
   setTheme: (t) => {
     set({ theme: t });
-    void repo.setSetting(themeKey, t);
+    cacheSetting(THEME_KEY, t);
     applyTheme(t);
+    void pushSettingsUpdate({ theme: t });
   },
   setCurrency: (c) => {
     set({ currency: c });
-    void repo.setSetting(currencyKey, c);
+    cacheSetting(CURRENCY_KEY, c);
+    void pushSettingsUpdate({ currency: c });
+  },
+  // Apply without persisting to the cloud (used when cloud settings load).
+  setThemeLocal: (t) => {
+    set({ theme: t });
+    cacheSetting(THEME_KEY, t);
+    applyTheme(t);
+  },
+  setCurrencyLocal: (c) => {
+    set({ currency: c });
+    cacheSetting(CURRENCY_KEY, c);
   },
   setEditing: (t) => set({ editing: t }),
   toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
@@ -56,6 +83,11 @@ export const useStore = create<UIState>((set) => ({
   setFilterCategory: (c) => set({ filterCategory: c }),
   setDateRange: (from, to) => set({ dateFrom: from, dateTo: to }),
 }));
+
+function todayMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
 export function applyTheme(mode: ThemeMode) {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -66,68 +98,29 @@ export function applyTheme(mode: ThemeMode) {
     ?.setAttribute("content", dark ? "#0f1115" : "#0ea5a4");
 }
 
+/** Runs once before mount: restores theme/currency (localStorage, with a
+ *  one-time fallback to legacy IndexedDB settings for pre-cloud users). */
 export async function initSettings() {
-  // Writes must happen here (outside liveQuery) — Dexie liveQueries are read-only.
-  await repo.ensureDefaults();
-  const theme = await repo.getSetting<ThemeMode>(themeKey, "system");
-  const currency = await repo.getSetting<string>(currencyKey, "₹");
+  let theme = cachedSetting<ThemeMode>(THEME_KEY);
+  let currency = cachedSetting<string>(CURRENCY_KEY);
+  if (!theme || !currency) {
+    try {
+      const legacy = await repo.getSettings();
+      if (!theme && legacy.theme) {
+        theme = legacy.theme;
+        cacheSetting(THEME_KEY, theme);
+      }
+      if (!currency && legacy.currency) {
+        currency = legacy.currency;
+        cacheSetting(CURRENCY_KEY, currency);
+      }
+    } catch { /* legacy read is best-effort */ }
+  }
+  theme = theme ?? "system";
+  currency = currency ?? "₹";
   useStore.setState({ theme, currency });
   applyTheme(theme);
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (useStore.getState().theme === "system") applyTheme("system");
   });
-}
-
-// ---- Data hooks (live queries over Dexie) ----
-
-export function useTransactions(): Transaction[] | undefined {
-  return useLiveQuery(() => db.transactions.toArray(), []);
-}
-
-export function useCategories(): Category[] {
-  return useLiveQuery(() => db.categories.orderBy("name").toArray(), []) ?? [];
-}
-
-export function useBudget(month: string): number | undefined {
-  return useLiveQuery(async () => {
-    const row = await db.budgets.get(month);
-    if (row) return row.amount;
-    // default to last month's budget
-    const prev = await db.budgets.get(shiftMonth(month, -1));
-    return prev?.amount ?? undefined;
-  }, [month]);
-}
-
-export function useRecurrings(): Recurring[] {
-  return useLiveQuery(() => db.recurrings.toArray(), []) ?? [];
-}
-
-// ---- Mutations ----
-
-export function makeTransaction(amount: number, note: string, categoryId: string, date: string, time: string, recurringId?: string): Transaction {
-  return { id: uid(), amount, note, categoryId, date, time, createdAt: Date.now(), recurringId };
-}
-
-export async function saveExpense(input: {
-  amount: number;
-  note: string;
-  categoryId: string;
-  date: string;
-  time: string;
-}) {
-  const tx = makeTransaction(input.amount, input.note, input.categoryId, input.date, input.time);
-  await repo.addTransaction(tx);
-  return tx;
-}
-
-export async function updateExpense(id: string, patch: Partial<Transaction>) {
-  await repo.updateTransaction({ id, ...patch });
-}
-
-export async function deleteExpense(id: string): Promise<Transaction | undefined> {
-  return repo.deleteTransaction(id);
-}
-
-export async function restoreExpense(t: Transaction) {
-  await repo.addTransaction(t);
 }

@@ -1,116 +1,142 @@
-# SpendWise — Expense Tracker (PWA)
+# SpendWise — Expense Tracker (PWA + Supabase + Vercel)
 
-A mobile-first, offline-first expense tracker built with **React + Vite + Tailwind CSS v4**. Designed for one-handed phone use (360–430px first, centered max-width 480px on desktop), installable as a PWA, with all data stored locally in IndexedDB via Dexie.
+A mobile-first expense tracker built with **React + Vite + Tailwind CSS v4**. Data lives in **Supabase** (Postgres with Row Level Security), syncs **live across devices** via realtime, works **offline** (optimistic writes + a durable retry queue), and is protected by **email/password or Google sign-in**. Installable as a **PWA** and deployable on **Vercel**.
 
 ## Features
 
-- **Dashboard** — monthly budget (tap to edit, defaults to last month's budget), total expense, remaining balance, animated progress bar (orange at 80%, red when over), "Over budget" label, budget alert banners at 80% and 100%.
-- **Month switcher** — browse any month with its own budget and transactions.
-- **Transactions** — newest first, grouped by date (Today / Yesterday / 12 Sept), swipe left to delete (with undo toast) or use the ✕ button, tap to edit amount/note/category/date/time. Search by text, filter by category.
-- **Calculator input pad** — large ₹ display, note field, horizontally scrollable category chips, big keypad (1–9, 00, 0, ⌫) with haptic feedback via `navigator.vibrate`, large round **+** button, collapsible pad.
-- **Stats tab** — donut chart by category (SVG, no chart lib), daily spending bar chart, top category, average per day, projected month-end spend.
-- **Categories** — 7 defaults with icons/colors, add custom ones.
-- **Recurring expenses** — monthly auto-add (e.g. rent) on day-of-month, with on/off toggle.
-- **Light / Dark / System theme**, remembered; true-dark `#0f1115` surfaces.
-- **Currency setting** (default INR ₹) with Indian number formatting (1,23,456).
-- **Data tools** — export CSV, export JSON backup, import JSON (merge), clear all data (with confirmation), demo-data seed toggle.
-- **App lock** — optional 4–8 digit PIN screen on start.
-- **PWA** — manifest, service worker (offline precache), app icons, Add to Home Screen, theme-color meta, standalone display.
+- **Cloud sync** — every expense, budget, category and recurring rule is stored in your Supabase account; changes made on one device appear live on the others (Supabase Realtime).
+- **Auth** — email + password, or "Continue with Google" (optional, see setup below). Sessions persist across restarts. An optional 4–8 digit PIN lock still works on top of sign-in.
+- **Offline-first writes** — adding an expense is instant (optimistic update). If the network is down the write is queued in IndexedDB and syncs automatically when you're back online. Hard failures roll back with a **Retry** toast.
+- **One-time local import** — on first login the app offers to upload any data that predates the cloud (your old IndexedDB data). The upload is batched and idempotent; your local copy is never deleted.
+- **Dashboard** — monthly budget (tap to edit, defaults to last month's budget), total expense, remaining balance, animated progress bar, alert banners at 80% and 100%.
+- **Month switcher** — each month fetches only its own expenses (server-side `spent_at` range filter) with loading skeletons.
+- **Transactions** — newest first, grouped by date, swipe-to-delete with undo, tap to edit, search + category filter + custom date range.
+- **Calculator input pad** — large display, note field, category chips, haptic keypad.
+- **Stats** — donut chart by category, daily bars, top category, avg/day, projected month-end.
+- **Categories / recurring expenses** — 7 defaults per account, custom ones supported; monthly recurring rules auto-run on app open.
+- **Theme & currency** — light/dark/system, INR ₹ default with Indian grouping — both synced to your account.
+- **Data tools** — export CSV/JSON, import JSON, demo data, clear all.
+- **PWA** — installable, offline app shell; the service worker **never caches Supabase API traffic** (`NetworkOnly`), so synced data can never go stale.
 
 ## Tech stack
 
-| Layer      | Choice                                            |
-| ---------- | ------------------------------------------------- |
-| UI         | React 19, Vite 6, Tailwind CSS v4                 |
-| State      | Zustand (`src/store/store.ts`) + Dexie live hooks |
-| Data       | IndexedDB via Dexie (`src/db/`)                   |
-| Animations | Framer Motion (respects `prefers-reduced-motion`) |
-| Icons      | lucide-react + emoji category icons               |
-| PWA        | vite-plugin-pwa (Workbox)                         |
-| Tests      | Vitest (`src/utils/*.test.ts`)                    |
+| Layer      | Choice                                                          |
+| ---------- | --------------------------------------------------------------- |
+| UI         | React 19, Vite 6, Tailwind CSS v4                               |
+| State      | Zustand (`src/store/`)                                          |
+| Data       | Supabase (Postgres + RLS + Realtime) via repository layer        |
+| Local      | IndexedDB via Dexie — offline write queue, legacy import, fallback |
+| Auth       | Supabase Auth (email/password + Google OAuth)                   |
+| PWA        | vite-plugin-pwa (Workbox)                                       |
+| Tests      | Vitest (`src/db/repo.test.ts`, `src/utils/*.test.ts`)           |
 
 ## Project structure
 
 ```
-├── index.html                  # viewport-fit=cover, theme-color, 16px+ inputs
-├── public/icons/               # generated PWA icons (192/512/maskable)
-├── scripts/generate-icons.mjs  # zero-dependency icon generator
+├── supabase/schema.sql         # paste into Supabase SQL Editor (tables, RLS, triggers, realtime)
+├── vercel.json                 # SPA rewrites + sw.js headers
+├── .env.example                # copy to .env.local, fill in Supabase keys
 └── src/
-    ├── main.tsx                # entry, settings init
-    ├── App.tsx                 # router + lock screen + shell
-    ├── index.css               # theme tokens, safe areas, reduced motion
-    ├── components/             # Header, SummaryCard, TransactionList, InputPad, …
-    ├── pages/                  # Dashboard, Stats, Settings
-    ├── hooks/                  # haptics, app lock, recurring auto-add, media queries
-    ├── store/                  # Zustand store + live-query data hooks
-    ├── db/                     # Dexie schema, repository layer, seed data
-    └── utils/                  # calc (tested), format, csv/json export
+    ├── lib/supabase.ts         # Supabase client (anon key only)
+    ├── auth/AuthProvider.tsx   # session state, sign in/up/Google/out
+    ├── db/
+    │   ├── types.ts            # domain types + the repository interface
+    │   ├── supabaseRepo.ts     # Supabase implementation
+    │   ├── dexieRepo.ts        # IndexedDB fallback (used when env vars are absent)
+    │   ├── repo.ts             # the facade everything imports (`repo`, queue helpers)
+    │   ├── queue.ts            # durable offline write queue
+    │   ├── migrate.ts          # one-time IndexedDB → Supabase import
+    │   └── seed.ts             # demo data
+    ├── store/
+    │   ├── data.ts             # data hooks + optimistic mutations + realtime
+    │   └── store.ts            # UI state (month, filters, theme, currency)
+    ├── pages/                  # Dashboard, Stats, Settings, Login
+    └── components/             # Header, TransactionList, InputPad, ToastHost, MigrationPrompt, …
 ```
 
-The repository layer (`src/db/repo.ts`) is the single persistence boundary — swap its internals for Supabase/Firebase calls later without touching UI code.
+Components only ever call the repository/store layer — never Supabase directly. If the env vars are missing the app transparently falls back to local-only mode, so a fresh clone still runs.
 
-## Getting started
+## 1. Create the Supabase project
+
+1. Go to [supabase.com](https://supabase.com) → **New project** (any name, e.g. `spendwise`; pick a region near you and a strong DB password).
+2. When it's ready, open **SQL Editor → New query**, paste the entire contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. This creates the tables (`categories`, `expenses`, `budgets`, `recurring_expenses`, `settings`), indexes, the `updated_at` trigger, Row Level Security policies (each user can only see/touch their own rows) and enables Realtime on `expenses`.
+3. Go to **Project Settings → API** and copy two values:
+   - **Project URL** → `VITE_SUPABASE_URL`
+   - **anon public key** → `VITE_SUPABASE_ANON_KEY`
+
+   ⚠️ Use only the **anon** key in the frontend — it's safe because RLS scopes every table to the signed-in user. **Never** put the `service_role` key in `.env*`, code, or Vercel.
+
+### Optional: enable "Continue with Google"
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials) create an **OAuth client ID → Web application**.
+2. Add the authorized redirect URI shown by Supabase (Dashboard → **Authentication → Providers → Google**; it looks like `https://<project-ref>.supabase.co/auth/v1/callback`).
+3. Paste the client ID + secret into **Authentication → Providers → Google** and enable it.
+4. Done — the button on the login screen now works. (Until then it shows a "provider not enabled" message; email sign-in is unaffected.)
+
+## 2. Run locally
 
 ```bash
 npm install
-npm run dev      # http://localhost:5175 (opens automatically)
+cp .env.example .env.local    # then paste your URL + anon key into it
+npm run dev                   # http://localhost:5175
 ```
 
-The dev server is pinned to port **5175** with `--strictPort`, so the URL is always the same. If 5175 is busy, use `npm run dev:alt` (port 5176).
+Sign up with any email/password (check **Authentication → Users** in Supabase to see the account; disable "Confirm email" in **Authentication → Sign In / Providers** if you want immediate logins during dev).
 
-Other scripts:
+## 3. Deploy on Vercel
+
+1. **Push to GitHub**
+
+   ```bash
+   git add -A
+   git commit -m "Add Supabase backend + Vercel deployment"
+   git push origin main
+   ```
+
+2. **Import the repo** — [vercel.com/new](https://vercel.com/new) → import your repository. Vercel auto-detects Vite (build `npm run build`, output `dist`). `vercel.json` already contains the SPA rewrite so all routes serve `index.html`.
+
+3. **Add environment variables** — Project → Settings → Environment Variables, add for *Production, Preview and Development*:
+   - `VITE_SUPABASE_URL` = your project URL
+   - `VITE_SUPABASE_ANON_KEY` = your anon key
+
+4. **Deploy**, then copy your final URL (e.g. `https://spendwise.vercel.app`).
+
+5. **Allow the new domain in Supabase** — Dashboard → **Authentication → URL Configuration**:
+   - **Site URL**: `https://spendwise.vercel.app` (your Vercel URL)
+   - **Redirect URLs**: add `https://spendwise.vercel.app/**` (and `http://localhost:5175/**` for dev). Required for email confirmation links and Google sign-in to return to your app.
+
+6. Redeploy from Vercel (*Deployments → ⋯ → Redeploy*) if you changed Supabase settings while the build was running.
+
+7. Visit the URL, sign up — the app offers to import any local IndexedDB data from a previous install, then syncs from the cloud from then on.
+
+## 4. Install on your phone (PWA)
+
+1. Open your deployed Vercel URL in the phone's browser (Chrome on Android, Safari on iOS).
+2. **Android / Chrome:** ⋮ menu → **Add to Home screen** → **Install**.
+   **iOS / Safari:** Share (□↑) → **Add to Home Screen** → **Add**.
+3. Launch from the home-screen icon — it opens fullscreen (standalone), keeps you signed in, shows queued data offline, and respects the gesture bar via safe-area insets.
+
+## Scripts
 
 ```bash
-npm test         # unit tests for totals, remaining, month grouping, formatting
-npm run build    # typecheck + production build (dist/)
+npm run dev      # dev server (port 5175, opens automatically)
+npm test         # unit tests — data layer (mocked Supabase client), calc, formatting
+npm run build    # typecheck + production build → dist/
 npm run preview  # serve the production build locally
 npm run icons    # regenerate PWA icons
 ```
 
-## Deploy
+## Security notes
 
-### Vercel
-
-```bash
-npm i -g vercel
-vercel           # framework: Vite, build: npm run build, output: dist
-```
-
-Or connect the repo in the Vercel dashboard — it auto-detects Vite.
-
-### Netlify
-
-```bash
-npm i -g netlify-cli
-netlify deploy --prod --dir=dist
-```
-
-Or add `netlify.toml`:
-
-```toml
-[build]
-  command = "npm run build"
-  publish = "dist"
-```
-
-The app uses hash routing, so no SPA rewrite rules are needed (though `/* /index.html 200` works too).
-
-## Install on your phone
-
-1. Deploy (or run `npm run preview -- --host` and open the LAN URL).
-2. **Android/Chrome:** tap the ⋮ menu → **Add to Home screen** → Install.
-3. **iOS/Safari:** tap Share → **Add to Home Screen**.
-4. Launch from the home screen icon — it opens fullscreen (standalone), works offline, and the keypad respects the gesture bar via safe-area insets.
-
-## Notes
-
-- All data lives in your browser's IndexedDB; nothing leaves the device.
-- Recurring expenses apply when the app is opened (day-of-month check).
-- Demo data: **Settings → Load demo data** for a full UI preview (idempotent — safe to click repeatedly).
+- Only the **anon key** ships to the browser; every table has **RLS enabled** with `user_id = auth.uid()` policies (see `supabase/schema.sql`), so users can never read or write each other's rows.
+- Inputs are validated on the client (amount > 0, note ≤ 200 chars) **and** in the DB (`amount numeric(12,2) CHECK (amount > 0)`, `char_length(note) <= 500`, day 1–28, theme enum).
+- `.env`, `.env.local` (and other `.env*`) are gitignored; `.env.example` documents the shape. The service worker runs all Supabase requests as `NetworkOnly` — auth tokens and data are never cached on disk by the SW.
 
 ## Troubleshooting
 
-- **Blank/white screen on open** — the app ships with an error boundary that shows a message plus *Reload app* / *Reset app data* buttons instead of a white page. *Reset app data* deletes the local IndexedDB database and restarts clean.
-- **Stale data after a schema change in development** — open DevTools → Application → IndexedDB → delete `spendwise-db`, then reload.
-- **Wrong app on localhost:5173** — other projects may claim common ports; this app always uses 5175 in dev.
-- **IndexedDB unavailable** (private mode / hardened browsers) — the app surfaces the error instead of silently failing; use a normal browser window.
+- **"Google sign-in isn't configured" / OAuth error** — the Google provider isn't enabled in Supabase yet, or the redirect URL from step "Optional: enable Google" is missing. Email sign-in works regardless.
+- **Email link opens the app but doesn't log me in** — add your production URL (and localhost) to **Authentication → URL Configuration → Redirect URLs**.
+- **No data syncs between two devices** — confirm both are signed into the *same* Supabase project (same `VITE_SUPABASE_URL`) and that `schema.sql` ran successfully (tables exist in **Table Editor**).
+- **Data not updating live** — check the browser console for realtime errors; Realtime requires the `supabase_realtime` publication line that `schema.sql` adds for `expenses`.
+- **Stale UI during development** — service worker caches the app shell; DevTools → Application → Service Workers → *Unregister*, then reload.
+- **Wrong app on localhost:5173** — this app always uses port 5175 in dev (`npm run dev:alt` for 5176).

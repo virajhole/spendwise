@@ -3,31 +3,32 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Stats from "./pages/Stats";
 import SettingsPage from "./pages/Settings";
-import BottomNav from "./components/BottomNav";
-import LockScreen from "./components/LockScreen";
+import Login from "./pages/Login";
+import RequireAuth from "./components/RequireAuth";
 import { useRecurringAutoAdd } from "./hooks/useRecurringAutoAdd";
-import { getStoredPin } from "./hooks/useAppLock";
+import { isSupabaseConfigured } from "./lib/supabase";
+import { bootUserData } from "./store/data";
 
 export default function App() {
   useRecurringAutoAdd();
-  const pin = getStoredPin();
 
   useEffect(() => {
     document.documentElement.style.height = "100%";
+    // Local-only mode (Supabase not configured): skip auth, boot straight away.
+    if (!isSupabaseConfigured) void bootUserData("local");
   }, []);
 
   return (
     <div className="mx-auto flex h-full max-w-[480px] flex-col bg-slate-100 dark:bg-[#0f1115] md:my-0 md:shadow-xl">
-      {pin ? <LockScreen /> : null}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <Routes>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route element={<RequireAuth />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        <BottomNav />
-      </div>
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   );
 }

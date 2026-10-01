@@ -1,23 +1,48 @@
-import { useRef, useState } from "react";
-import { Download, FileJson, RefreshCw, Trash2, Upload } from "lucide-react";
-import { db, type Backup } from "../db/db";
-import { repo } from "../db/repo";
+import { useEffect, useRef, useState } from "react";
+import { Download, FileJson, Import, LogOut, RefreshCw, Trash2, Upload } from "lucide-react";
+import type { Backup } from "../db/types";
+import { repo, cloudEnabled } from "../db/repo";
 import { seedDemoData } from "../db/seed";
+import { hasLegacyData, migrationState } from "../db/migrate";
 import { exportCSV, exportJSON, readJSONFile } from "../utils/export";
-import { useCategories, useRecurrings, useStore, type ThemeMode } from "../store/store";
+import { useStore, type ThemeMode } from "../store/store";
+import {
+  addCategory,
+  addRecurring,
+  clearAllData,
+  deleteCategory,
+  deleteRecurring,
+  refreshAllData,
+  startMigration,
+  updateRecurring,
+  useCategories,
+  useRecurrings,
+} from "../store/data";
+import { useAuth } from "../auth/AuthProvider";
 import { getStoredPin, setStoredPin } from "../hooks/useAppLock";
 import { formatAmount } from "../utils/format";
+import { pushToast } from "../store/toast";
 
 const CURRENCIES = ["₹", "$", "€", "£", "¥"];
 
 export default function SettingsPage() {
   const { currency, setCurrency, theme, setTheme } = useStore();
+  const { user, signOut } = useAuth();
   const categories = useCategories();
   const recurrings = useRecurrings();
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
   const [pin, setPin] = useState(getStoredPin() ?? "");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [legacyAvailable, setLegacyAvailable] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      if (cloudEnabled && migrationState() !== "done" && (await hasLegacyData())) {
+        setLegacyAvailable(true);
+      }
+    })();
+  }, []);
 
   const flash = (m: string) => {
     setMsg(m);
@@ -25,9 +50,8 @@ export default function SettingsPage() {
   };
 
   const handleExportCSV = async () => {
-    const txs = await db.transactions.toArray();
-    const cats = await db.categories.toArray();
-    exportCSV(txs, (id) => cats.find((c) => c.id === id)?.name ?? id);
+    const txs = await repo.getAllExpenses();
+    exportCSV(txs, (id) => categories.find((c) => c.id === id)?.name ?? "Uncategorized");
     flash("CSV exported");
   };
 
@@ -39,7 +63,8 @@ export default function SettingsPage() {
   const handleImport = async (file: File) => {
     try {
       const data = await readJSONFile(file);
-      const n = await repo.importAll(data as Backup, "merge");
+      const n = await repo.importAll(data as Backup);
+      await refreshAllData();
       flash(`Imported ${n} transactions`);
     } catch (e) {
       flash(e instanceof Error ? e.message : "Import failed");
@@ -54,6 +79,46 @@ export default function SettingsPage() {
 
       <div className="flex-1 overflow-y-auto px-4 pb-8">
         {msg ? <div className="mb-3 rounded-2xl bg-teal-600/10 px-4 py-2.5 text-sm font-medium text-teal-700 dark:text-teal-300" role="status">{msg}</div> : null}
+
+        {/* Account */}
+        <Card title="Account">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{user?.email ?? "Local only"}</p>
+              <p className="text-xs text-slate-400">
+                {cloudEnabled ? "Data syncs to your account across devices" : "Cloud sync not configured — data stays on this device"}
+              </p>
+            </div>
+            {cloudEnabled ? (
+              <button
+                onClick={() => void signOut()}
+                className="flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 active:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+              >
+                <LogOut size={15} aria-hidden /> Log out
+              </button>
+            ) : null}
+          </div>
+        </Card>
+
+        {/* Migration (one-time import of pre-cloud local data) */}
+        {legacyAvailable ? (
+          <Card title="Import local data">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              This browser still has data from before cloud sync. Import it to your account — the upload is safe to retry and your local copy is kept.
+            </p>
+            <button
+              onClick={() => {
+                void startMigration().then(() => {
+                  void hasLegacyData().then((has) => setLegacyAvailable(has));
+                  flash("Local data imported to your account");
+                });
+              }}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white"
+            >
+              <Import size={16} aria-hidden /> Import to cloud
+            </button>
+          </Card>
+        ) : null}
 
         {/* Appearance */}
         <Card title="Appearance">
@@ -104,7 +169,7 @@ export default function SettingsPage() {
                 {c.custom ? (
                   <button
                     onClick={async () => {
-                      await repo.deleteCategory(c.id);
+                      await deleteCategory(c.id);
                       flash("Category removed");
                     }}
                     aria-label={`Delete category ${c.name}`}
@@ -117,7 +182,7 @@ export default function SettingsPage() {
             ))}
           </ul>
           <AddCategory onAdd={async (name, icon, color) => {
-            await repo.addCategory(name, icon, color);
+            await addCategory(name, icon, color);
             flash(`Added ${name}`);
           }} />
         </Card>
@@ -132,20 +197,23 @@ export default function SettingsPage() {
                   <span className="tabular-nums">{formatAmount(r.amount, currency)}</span>
                   <span className="text-xs text-slate-400">day {r.day}</span>
                   <button
-                    onClick={() => void repo.updateRecurring({ id: r.id, active: !r.active })}
+                    onClick={() => void updateRecurring(r.id, { active: !r.active })}
                     aria-label={`Toggle ${r.name}`}
                     className={`rounded-full px-2 py-0.5 text-xs font-bold ${r.active ? "bg-teal-600/15 text-teal-600" : "bg-slate-200 text-slate-400 dark:bg-slate-800"}`}
                   >
                     {r.active ? "ON" : "OFF"}
                   </button>
-                  <button onClick={() => void repo.deleteRecurring(r.id)} aria-label={`Delete ${r.name}`} className="text-slate-400 hover:text-red-500">
+                  <button onClick={() => void deleteRecurring(r.id)} aria-label={`Delete ${r.name}`} className="text-slate-400 hover:text-red-500">
                     <Trash2 size={16} aria-hidden />
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <AddRecurring />
+          <AddRecurring onAdd={async (r) => {
+            await addRecurring(r);
+            flash(`Added ${r.name}`);
+          }} />
         </Card>
 
         {/* Data */}
@@ -169,6 +237,7 @@ export default function SettingsPage() {
           <button
             onClick={async () => {
               await seedDemoData();
+              await refreshAllData();
               flash("Demo data loaded");
             }}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 py-2.5 text-sm font-semibold dark:bg-slate-800"
@@ -181,7 +250,7 @@ export default function SettingsPage() {
               <div className="mt-2 flex gap-2">
                 <button
                   onClick={async () => {
-                    await repo.clearAll();
+                    await clearAllData();
                     setConfirmClear(false);
                     flash("All data cleared");
                   }}
@@ -227,10 +296,12 @@ export default function SettingsPage() {
               Save
             </button>
           </div>
-          <p className="mt-2 text-xs text-slate-400">Leave empty and save to disable. Lock applies on next app start.</p>
+          <p className="mt-2 text-xs text-slate-400">Leave empty and save to disable. Lock applies on next app start, on top of your account sign-in.</p>
         </Card>
 
-        <p className="mt-6 text-center text-xs text-slate-400">SpendWise v1.0 · Offline-first · Your data stays on this device</p>
+        <p className="mt-6 text-center text-xs text-slate-400">
+          SpendWise v2.0 · {cloudEnabled ? "Synced across your devices" : "Offline-first"}
+        </p>
       </div>
     </div>
   );
@@ -281,11 +352,12 @@ function AddCategory({ onAdd }: { onAdd: (name: string, icon: string, color: str
   );
 }
 
-function AddRecurring() {
+function AddRecurring({ onAdd }: { onAdd: (r: { name: string; amount: number; categoryId: string; day: number; active: boolean }) => void }) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [day, setDay] = useState("1");
   const { currency } = useStore();
+  const categories = useCategories();
   return (
     <div className="mt-3 space-y-2">
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Monthly rent" aria-label="Recurring name" className="w-full rounded-xl bg-slate-100 px-3 py-2 outline-none dark:bg-slate-800" />
@@ -293,13 +365,22 @@ function AddRecurring() {
         <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`Amount (${currency})`} aria-label="Recurring amount" className="min-w-0 flex-1 rounded-xl bg-slate-100 px-3 py-2 outline-none dark:bg-slate-800" />
         <input type="number" min={1} max={28} value={day} onChange={(e) => setDay(e.target.value)} aria-label="Day of month" className="w-20 rounded-xl bg-slate-100 px-3 py-2 outline-none dark:bg-slate-800" />
         <button
-          onClick={async () => {
+          onClick={() => {
             const amt = Number(amount);
             if (name.trim() && amt > 0) {
-              const cats = await db.categories.toArray();
-              await repo.addRecurring({ name: name.trim(), amount: amt, categoryId: cats[0]?.id ?? "other", day: Math.min(28, Math.max(1, Number(day) || 1)), active: true });
+              onAdd({
+                name: name.trim(),
+                amount: amt,
+                categoryId: categories[0]?.id ?? "",
+                day: Math.min(28, Math.max(1, Number(day) || 1)),
+                active: true,
+              });
               setName("");
               setAmount("");
+            } else if (!name.trim()) {
+              pushToast({ kind: "error", message: "Give the recurring expense a name" });
+            } else {
+              pushToast({ kind: "error", message: "Amount must be greater than 0" });
             }
           }}
           className="rounded-xl bg-teal-600 px-4 text-sm font-bold text-white"
