@@ -16,7 +16,7 @@ export default function Login() {
   const [info, setInfo] = useState("");
   // OAuth failures come back as ?error=…&error_description=… — show them
   // verbatim so problems are debuggable, then scrub them from the URL.
-  const [oauthError, setOauthError] = useState(() => readOAuthErrorFromUrl());
+  const [oauthError] = useState(() => readOAuthErrorFromUrl());
 
   useEffect(() => {
     if (oauthError) cleanOAuthUrl();

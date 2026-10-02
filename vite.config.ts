@@ -80,7 +80,9 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: "node",
       globals: true,
-      setupFiles: ["./src/test-setup.ts"],
+      setupFiles: ["./src/test-setup.ts", "./src/test-dom-setup.ts"],
+      environmentMatchGlobs: [["src/**/*.test.tsx", "jsdom"]],
+      exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
     },
   };
 });

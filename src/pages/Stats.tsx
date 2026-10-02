@@ -15,24 +15,25 @@ export default function Stats() {
   const categories = useCategories();
   const budget = useBudget(month);
 
-  // Last month's total for the comparison card.
+  // Last month's total for the comparison card. The total is stored together
+  // with the month it belongs to, so a slow fetch never shows stale data.
   const prevMonth = shiftMonth(month, -1);
-  const [prevTotal, setPrevTotal] = useState<number | null>(null);
+  const [prev, setPrev] = useState<{ month: string; total: number } | null>(null);
   useEffect(() => {
     let cancelled = false;
-    setPrevTotal(null);
     void repo
       .getExpenses({ from: `${prevMonth}-01`, to: monthEndDate(prevMonth) })
       .then((txs) => {
-        if (!cancelled) setPrevTotal(totalExpense(txs));
+        if (!cancelled) setPrev({ month: prevMonth, total: totalExpense(txs) });
       })
       .catch(() => {
-        if (!cancelled) setPrevTotal(null);
+        if (!cancelled) setPrev(null);
       });
     return () => {
       cancelled = true;
     };
   }, [prevMonth]);
+  const prevTotal = prev && prev.month === prevMonth ? prev.total : null;
 
   const txs = transactions ?? [];
   const monthTxs = inMonth(txs.filter((t) => t.categoryId), month) as (typeof txs[number])[];
@@ -59,7 +60,6 @@ export default function Stats() {
   const colors = ["#0ea5a4", "#f97316", "#3b82f6", "#ec4899", "#eab308", "#8b5cf6", "#64748b"];
   const R = 56;
   const C = 2 * Math.PI * R;
-  let acc = 0;
 
   if (transactions === undefined) {
     return (
@@ -90,6 +90,10 @@ export default function Stats() {
               {catTotals.map((c, i) => {
                 const frac = total > 0 ? c.amount / total : 0;
                 const dash = frac * C;
+                // Cumulative offset of every segment before this one.
+                const offset = catTotals
+                  .slice(0, i)
+                  .reduce((sum, x) => sum + (total > 0 ? x.amount / total : 0) * C, 0);
                 const el = (
                   <circle
                     key={c.categoryId}
@@ -100,12 +104,11 @@ export default function Stats() {
                     stroke={catMap.get(c.categoryId)?.color ?? colors[i % colors.length]}
                     strokeWidth="16"
                     strokeDasharray={`${dash} ${C - dash}`}
-                    strokeDashoffset={-acc}
+                    strokeDashoffset={-offset}
                     strokeLinecap="butt"
                     transform="rotate(-90 70 70)"
                   />
                 );
-                acc += dash;
                 return el;
               })}
               <text x="70" y="66" textAnchor="middle" className="fill-slate-400 text-[10px] font-semibold" fontSize="10">

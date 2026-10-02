@@ -36,7 +36,7 @@ export function readJSONFile(file: File): Promise<Backup> {
     reader.onload = () => {
       try {
         resolve(JSON.parse(String(reader.result)) as Backup);
-      } catch (e) {
+      } catch {
         reject(new Error("Could not parse JSON file"));
       }
     };

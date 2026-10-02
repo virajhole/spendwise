@@ -25,7 +25,9 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
   const [time, setTime] = useState(tx?.time ?? "");
   const [key, setKey] = useState(tx?.id ?? "");
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Reset local state when a different transaction is opened
   if (tx && tx.id !== key) {
@@ -102,8 +104,9 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
 
             {/* Scrollable content — everything fits in 85dvh; long content scrolls here */}
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2">
-              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">Amount</label>
+              <label htmlFor="edit-amount" className="block text-xs font-semibold uppercase tracking-wide text-slate-400">Amount</label>
               <input
+                id="edit-amount"
                 type="number"
                 inputMode="decimal"
                 min={0}
@@ -114,8 +117,9 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
                 className="mt-1 w-full rounded-xl bg-slate-100 px-3 py-2.5 text-lg font-bold outline-none focus:ring-2 focus:ring-teal-500 dark:bg-slate-800"
               />
 
-              <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-400">Note</label>
+              <label htmlFor="edit-note" className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-400">Note</label>
               <input
+                id="edit-note"
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -125,12 +129,13 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
               />
 
               <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-400">Category</label>
-              <div className="no-scrollbar mt-1 flex gap-1.5 overflow-x-auto pb-1">
+              <div className="no-scrollbar mt-1 flex gap-1.5 overflow-x-auto pb-1" role="radiogroup" aria-label="Category">
                 {categories.map((c) => (
                   <button
                     key={c.id}
+                    role="radio"
                     onClick={() => setCategoryId(c.id)}
-                    aria-pressed={categoryId === c.id}
+                    aria-checked={categoryId === c.id}
                     className={`flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold ${
                       categoryId === c.id ? "border-transparent text-white" : "border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300"
                     }`}
@@ -144,8 +149,9 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
 
               <div className="mt-3 flex gap-2">
                 <div className="flex-1">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">Date</label>
+                  <label htmlFor="edit-date" className="block text-xs font-semibold uppercase tracking-wide text-slate-400">Date</label>
                   <input
+                    id="edit-date"
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
@@ -154,8 +160,9 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
                   />
                 </div>
                 <div className="w-32">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">Time</label>
+                  <label htmlFor="edit-time" className="block text-xs font-semibold uppercase tracking-wide text-slate-400">Time</label>
                   <input
+                    id="edit-time"
                     type="time"
                     value={time}
                     onChange={(e) => setTime(e.target.value)}

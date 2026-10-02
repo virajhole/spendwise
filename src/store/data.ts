@@ -32,7 +32,7 @@ import {
 import type { PendingWrite } from "../db/db";
 import { hasLegacyData, markMigrationDismissed, markMigrationDone, migrationState, runMigration } from "../db/migrate";
 import { pushToast } from "./toast";
-import { applyTheme, useStore as useUIStore } from "./store";
+import { useStore as useUIStore } from "./store";
 
 /**
  * Cloud/local data store.
@@ -122,7 +122,6 @@ export function useBudget(month: string): number | undefined {
   const budgets = useDataStore((s) => s.budgets);
   useEffect(() => {
     if (userId && booted && !(month in budgets)) void loadBudget(month);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, booted, month, budgets]);
   const v = budgets[month];
   return typeof v === "number" ? v : undefined;

@@ -51,3 +51,6 @@ desktop.ini
 dev-dist/
 sw.js
 workbox-*.js
+test-results/
+playwright-report/
+playwright-report/

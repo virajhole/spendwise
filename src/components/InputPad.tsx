@@ -113,7 +113,11 @@ export default function InputPad({ categories, currency, collapsed, onSetCollaps
     setNote("");
     setCategoryId(DEFAULT_CATEGORY);
     manualCategory.current = false;
-    onSetCollapsed(false); // keypad ready for the next entry
+    // Re-expand after adding: blur the note (closes the system keyboard) and
+    // clear the typing state, then bring the keypad back.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    setNoteFocused(false);
+    onSetCollapsed(false);
   };
 
   const noteFocusProps = {

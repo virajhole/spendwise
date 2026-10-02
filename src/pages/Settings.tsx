@@ -444,8 +444,6 @@ function ActionButton({ icon, label, onClick }: { icon: React.ReactNode; label: 
 function AddCategory({ onAdd }: { onAdd: (name: string, icon: string, color: string) => void }) {
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("⭐");
-  const colors = ["#0ea5a4", "#f97316", "#3b82f6", "#ec4899", "#8b5cf6"];
-  const [color, setColor] = useState(colors[0]);
   return (
     <div className="mt-3 flex gap-2">
       <input value={icon} onChange={(e) => setIcon(e.target.value.slice(0, 2))} aria-label="Icon" className="w-12 rounded-xl bg-slate-100 py-2 text-center dark:bg-slate-800" />
@@ -453,7 +451,7 @@ function AddCategory({ onAdd }: { onAdd: (name: string, icon: string, color: str
       <button
         onClick={() => {
           if (name.trim()) {
-            onAdd(name.trim(), icon || "⭐", color);
+            onAdd(name.trim(), icon || "⭐", "#0ea5a4");
             setName("");
           }
         }}

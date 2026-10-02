@@ -40,12 +40,39 @@ export default function App() {
     checkReminder();
     // Local-only mode (Supabase not configured): skip auth, boot straight away.
     if (!isSupabaseConfigured) void bootUserData("local");
+
+    // Preload the lazy route chunks during idle time so the first visit to
+    // Stats/Settings paints instantly instead of waiting on the network.
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const preload = () => {
+      void import("./pages/Stats");
+      void import("./pages/Settings");
+      void import("./pages/Login");
+    };
+    const handle: number = w.requestIdleCallback
+      ? w.requestIdleCallback(preload, { timeout: 2000 })
+      : window.setTimeout(preload, 1500);
+    return () => {
+      if (w.cancelIdleCallback) w.cancelIdleCallback(handle);
+      else window.clearTimeout(handle);
+    };
   }, []);
 
   return (
     <div className="app-shell mx-auto flex max-w-[480px] flex-col bg-slate-100 dark:bg-[#0f1115] md:my-0 md:shadow-xl">
       <OfflineBadge />
-      <Suspense fallback={<div className="flex-1" />}>
+      <Suspense
+        fallback={
+          <div className="flex flex-1 flex-col gap-3 p-4" aria-label="Loading">
+            <div className="h-6 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="h-28 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800" />
+            <div className="h-40 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800" />
+          </div>
+        }
+      >
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<RequireAuth />}>

@@ -144,11 +144,18 @@ Sign up with any email/password (check **Authentication → Users** in Supabase 
 
 ```bash
 npm run dev      # dev server (port 5175, opens automatically)
-npm test         # unit tests — data layer (mocked Supabase client), calc, formatting
+npm test         # unit + component tests (Vitest; Supabase mocked in component tests)
+npm run e2e      # build in local-only mode + Playwright E2E at 360x780 (system Chrome)
+npm run lint     # ESLint over src/
 npm run build    # typecheck + production build → dist/
 npm run preview  # serve the production build locally
 npm run icons    # regenerate PWA icons
 ```
+
+E2E notes: `npm run e2e` first rebuilds with the Supabase env vars cleared, so the
+flows run against local IndexedDB — deterministic and safe (your cloud data is
+never touched). Chrome must be installed (tests use the system Chrome via
+`channel: "chrome"`).
 
 ## Security notes
 
