@@ -4,7 +4,7 @@ import {
   budgetToRow,
   categoryToRow,
   dayStartISO,
-  DEFAULT_CATEGORIES,
+  defaultCategoriesFor,
   expenseToRow,
   firstOfMonth,
   isUuid,
@@ -280,7 +280,11 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
       const res = await client.from("categories").select("id").limit(1);
       throwIfError(res);
       if ((res.data ?? []).length > 0) return;
-      for (const part of chunk(DEFAULT_CATEGORIES, CHUNK)) {
+      const { data } = await client.auth.getUser();
+      const userId = data.user?.id;
+      if (!userId) throw new Error("Not signed in");
+      // Built-in ids are PER USER — two accounts must never share them.
+      for (const part of chunk(defaultCategoriesFor(userId), CHUNK)) {
         const up = await client.from("categories").upsert(part.map(categoryToRow));
         throwIfError(up);
       }
@@ -319,6 +323,9 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
 
     async importAll(data: Backup): Promise<number> {
       if (!data || !Array.isArray(data.transactions)) throw new Error("Invalid backup file");
+      const { data: userData } = await client.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) throw new Error("Not signed in");
 
       // 1. categories — map every incoming id onto a valid cloud id first so
       //    expense FKs always resolve.
@@ -326,7 +333,7 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
       const cloudIds = new Set(existing.map((c) => c.id));
       const catMap = new Map<string, string>();
       for (const c of data.categories ?? []) {
-        const mapped = mapLegacyCategoryId(c.id, cloudIds);
+        const mapped = mapLegacyCategoryId(c.id, userId, existing);
         catMap.set(c.id, mapped);
         if (!cloudIds.has(mapped)) {
           const res = await client
@@ -339,10 +346,10 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
 
       // 2. recurring rules (before expenses, so recurring_id FKs resolve).
       //    uuid-shaped ids are trusted (backups produced by this app); legacy
-      //    string ids are hashed deterministically.
+      //    string ids are hashed per user, deterministically.
       const recMap = new Map<string, string>();
       for (const r of data.recurrings ?? []) {
-        const mapped = isUuid(r.id) ? r.id : uuidFromSeed(`rec:${r.id}`);
+        const mapped = isUuid(r.id) ? r.id : uuidFromSeed(`rec:${userId}:${r.id}`);
         recMap.set(r.id, mapped);
         const res = await client
           .from("recurring_expenses")
@@ -355,7 +362,7 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
       // 3. expenses
       const txs: Transaction[] = data.transactions.map((t) => ({
         ...t,
-        id: isUuid(t.id) ? t.id : uuidFromSeed(`exp:${t.id}`),
+        id: isUuid(t.id) ? t.id : uuidFromSeed(`exp:${userId}:${t.id}`),
         categoryId: t.categoryId ? (catMap.get(t.categoryId) ?? "") : "",
         recurringId: t.recurringId ? recMap.get(t.recurringId) : undefined,
       }));

@@ -21,7 +21,7 @@ export default function FilterBar({ categories }: Props) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search notes…"
             aria-label="Search transactions"
-            className="w-full rounded-full border border-slate-200 bg-white py-3 pl-10 pr-4 text-[15px] outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-900"
+            className="w-full rounded-full border border-slate-200 bg-white py-3 pl-10 pr-4 text-base outline-none focus:border-teal-500 dark:border-slate-800 dark:bg-slate-900"
           />
         </div>
         {active ? (

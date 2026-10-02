@@ -14,6 +14,7 @@ import {
   repo,
   removeQueuedOp,
   isNetworkError,
+  isUuid,
   validateExpenseInput,
   rowToExpense,
   uid,
@@ -201,8 +202,15 @@ export async function bootUserData(userId: string): Promise<void> {
     repo.getCategories(),
     repo.getRecurrings(),
     loadPendingOps(userId),
-  ]);
-  set({ categories, recurrings, pendingOps, booted: true });
+  ]).catch((e) => {
+    pushToast({
+      kind: "error",
+      message: `Couldn't load your data — ${e instanceof Error ? e.message : "error"}`,
+      action: { label: "Retry", run: () => location.reload() },
+    });
+    return [undefined, undefined, []] as const;
+  });
+  set({ categories, recurrings, pendingOps: pendingOps as PendingWrite[], booted: true });
 
   subscribeRealtime(userId);
   void checkMigration();
@@ -382,6 +390,12 @@ async function runWrite(op: QueuedOp, opts: WriteOpts): Promise<void> {
       await reloadPendingOps();
       return;
     }
+    // Hard error: the optimistic change is rolled back AND the queued op is
+    // dropped (Retry re-enqueues it) so one poison write can't haunt the queue.
+    if (queuedId) {
+      await removeQueuedOp(queuedId);
+      await reloadPendingOps();
+    }
     opts.rollback();
     const message = e instanceof Error ? e.message : "Something went wrong";
     pushToast({
@@ -399,7 +413,11 @@ async function runWrite(op: QueuedOp, opts: WriteOpts): Promise<void> {
 function resolveCategoryId(categoryId: string): string {
   if (!categoryId) return "";
   const cats = get().categories;
-  if (!cats) return categoryId; // not loaded yet — assume the caller knows best
+  if (!cats) {
+    // Categories not loaded yet — never send a non-UUID category to the cloud
+    // (Postgres would reject it); local mode keeps its string ids.
+    return cloudEnabled && !isUuid(categoryId) ? "" : categoryId;
+  }
   if (cats.some((c) => c.id === categoryId)) return categoryId;
   // Legacy/local ids like "other" map onto the matching category by name.
   return cats.find((c) => c.name.toLowerCase() === categoryId.toLowerCase())?.id ?? "";

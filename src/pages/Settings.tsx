@@ -236,7 +236,7 @@ export default function SettingsPage() {
           />
           <button
             onClick={async () => {
-              await seedDemoData();
+              await seedDemoData(user?.id ?? "local");
               await refreshAllData();
               flash("Demo data loaded");
             }}

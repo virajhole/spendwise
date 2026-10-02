@@ -12,12 +12,14 @@ function mount() {
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <AuthProvider>
-          <BrowserRouter>
+        {/* AuthProvider sits inside the Router so it can navigate to the
+            dashboard after OAuth redirects complete. */}
+        <BrowserRouter>
+          <AuthProvider>
             <ToastHost />
             <App />
-          </BrowserRouter>
-        </AuthProvider>
+          </AuthProvider>
+        </BrowserRouter>
       </ErrorBoundary>
     </React.StrictMode>,
   );

@@ -113,7 +113,7 @@ export default function InputPad({ categories, currency, collapsed, onToggleColl
               placeholder="What did you spend on? e.g. ice cream"
               aria-label="Note"
               maxLength={60}
-              className="mt-2 w-full rounded-xl bg-slate-100 px-3 py-2.5 text-[15px] outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 dark:bg-slate-800"
+              className="mt-2 w-full rounded-xl bg-slate-100 px-3 py-2.5 text-base outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 dark:bg-slate-800"
             />
 
             {/* Category chips */}

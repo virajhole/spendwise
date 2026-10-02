@@ -3,10 +3,11 @@ import { uuidFromSeed, type Recurring, type Transaction } from "./types";
 
 /**
  * Generates demo transactions, a budget and a recurring rule for UI preview.
- * Deterministic ids make it idempotent — safe to click repeatedly (values are
- * refreshed, never duplicated).
+ * Ids are deterministic PER USER (cloud PKs are global — shared ids would
+ * collide across accounts), making it idempotent — safe to click repeatedly
+ * (values are refreshed, never duplicated).
  */
-export async function seedDemoData(): Promise<void> {
+export async function seedDemoData(userId = "local"): Promise<void> {
   await repo.ensureDefaults();
   const cats = await repo.getCategories();
   const catId = (legacy: string): string =>
@@ -44,7 +45,7 @@ export async function seedDemoData(): Promise<void> {
     const date = `${y}-${String(m + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const created = new Date(y, m, d.getDate(), 9 + (i % 12), (i * 7) % 60);
     txs.push({
-      id: uuidFromSeed(`demo:${date}:${i}`),
+      id: uuidFromSeed(`demo:${userId}:${date}:${i}`),
       amount: amount + (i % 4) * 20,
       note,
       categoryId: catId(cat),
@@ -61,7 +62,7 @@ export async function seedDemoData(): Promise<void> {
     const date = `${py}-${String(pm + 1).padStart(2, "0")}-${String(3 + i * 2).padStart(2, "0")}`;
     const created = new Date(py, pm, 3 + i * 2, 10 + (i % 9), 15);
     txs.push({
-      id: uuidFromSeed(`demo:${date}:${i}`),
+      id: uuidFromSeed(`demo:${userId}:${date}:${i}`),
       amount,
       note,
       categoryId: catId(cat),

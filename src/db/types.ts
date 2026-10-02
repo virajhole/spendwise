@@ -139,39 +139,60 @@ export function isUuid(id: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Default categories — deterministic ids so every device/user agrees on them
+// Default categories — ids are PER USER in cloud mode (uuidFromSeed includes
+// the user id). They must never be shared across accounts: the `categories.id`
+// primary key is global, and a shared id would make the second account's
+// seeding collide with the first account's rows (RLS silently skips the
+// conflicting upsert, leaving the new account with zero categories).
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_CATEGORIES: Category[] = [
-  { id: uuidFromSeed("cat:Food"), name: "Food", icon: "🍔", color: "#f97316" },
-  { id: uuidFromSeed("cat:Travel"), name: "Travel", icon: "🚌", color: "#3b82f6" },
-  { id: uuidFromSeed("cat:Shopping"), name: "Shopping", icon: "🛍️", color: "#ec4899" },
-  { id: uuidFromSeed("cat:Bills"), name: "Bills", icon: "💡", color: "#eab308" },
-  { id: uuidFromSeed("cat:Health"), name: "Health", icon: "🏥", color: "#22c55e" },
-  { id: uuidFromSeed("cat:Fun"), name: "Fun", icon: "🎮", color: "#8b5cf6" },
-  { id: uuidFromSeed("cat:Other"), name: "Other", icon: "📦", color: "#64748b" },
+export interface CategoryMeta {
+  name: string;
+  icon: string;
+  color: string;
+}
+
+export const DEFAULT_CATEGORY_META: CategoryMeta[] = [
+  { name: "Food", icon: "🍔", color: "#f97316" },
+  { name: "Travel", icon: "🚌", color: "#3b82f6" },
+  { name: "Shopping", icon: "🛍️", color: "#ec4899" },
+  { name: "Bills", icon: "💡", color: "#eab308" },
+  { name: "Health", icon: "🏥", color: "#22c55e" },
+  { name: "Fun", icon: "🎮", color: "#8b5cf6" },
+  { name: "Other", icon: "📦", color: "#64748b" },
 ];
 
-const DEFAULT_CATEGORY_IDS = new Set(DEFAULT_CATEGORIES.map((c) => c.id));
+/** Local-mode (IndexedDB) defaults — per-browser storage, global seeds are fine. */
+export const DEFAULT_CATEGORIES: Category[] = DEFAULT_CATEGORY_META.map((m) => ({
+  id: uuidFromSeed(`cat:${m.name}`),
+  ...m,
+}));
 
-export function isDefaultCategoryId(id: string): boolean {
-  return DEFAULT_CATEGORY_IDS.has(id);
+/** Deterministic per-user id for a built-in category. */
+export function defaultCategoryId(userId: string, name: string): string {
+  return uuidFromSeed(`cat:${userId}:${name}`);
+}
+
+/** The 7 built-in categories with per-user ids (cloud mode). */
+export function defaultCategoriesFor(userId: string): Category[] {
+  return DEFAULT_CATEGORY_META.map((m) => ({ id: defaultCategoryId(userId, m.name), ...m }));
 }
 
 /**
- * Map a legacy (IndexedDB-era) category id to its cloud id:
- * built-in categories map onto the deterministic default id (matched by
- * lowercase id/name), custom ones get a deterministic per-source id so
- * re-running a migration/import upserts instead of duplicating.
+ * Map a legacy/imported category id onto a valid cloud category id for THIS
+ * user: an existing cloud category with the same id or name wins, built-in
+ * names map onto the user's deterministic default ids, anything else gets a
+ * deterministic per-user hash so re-runs upsert instead of duplicating.
  */
-export function mapLegacyCategoryId(legacyId: string, existingCloudIds: Set<string>): string {
+export function mapLegacyCategoryId(legacyId: string, userId: string, existing: Category[]): string {
+  const byId = existing.find((c) => c.id === legacyId);
+  if (byId) return byId.id;
   const lowered = legacyId.toLowerCase();
-  const builtIn = DEFAULT_CATEGORIES.find(
-    (c) => c.id.toLowerCase() === lowered || c.name.toLowerCase() === lowered,
-  );
-  if (builtIn) return builtIn.id;
-  if (isUuid(legacyId) && existingCloudIds.has(legacyId)) return legacyId;
-  return uuidFromSeed(`legacycat:${legacyId}`);
+  const byName = existing.find((c) => c.name.toLowerCase() === lowered);
+  if (byName) return byName.id;
+  const builtIn = DEFAULT_CATEGORY_META.find((m) => m.name.toLowerCase() === lowered);
+  if (builtIn) return defaultCategoryId(userId, builtIn.name);
+  return uuidFromSeed(`legacycat:${userId}:${legacyId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +349,10 @@ export function categoryToRow(c: Category): Omit<CategoryRow, "user_id" | "creat
 }
 
 export function rowToCategory(row: CategoryRow): Category {
-  return { id: row.id, name: row.name, icon: row.icon, color: row.color, custom: !isDefaultCategoryId(row.id) };
+  // "Custom" = not one of the built-in names (built-in ids are per-user, so
+  // the name is the only identity that works across accounts).
+  const custom = !DEFAULT_CATEGORY_META.some((m) => m.name.toLowerCase() === row.name.toLowerCase());
+  return { id: row.id, name: row.name, icon: row.icon, color: row.color, custom };
 }
 
 export function recurringToRow(r: Recurring): Omit<RecurringRow, "user_id" | "created_at"> {

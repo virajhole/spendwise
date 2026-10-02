@@ -3,7 +3,8 @@ import { repo, cloudEnabled } from "./repo";
 import { supabase } from "../lib/supabase";
 import {
   categoryToRow,
-  DEFAULT_CATEGORIES,
+  defaultCategoryId,
+  DEFAULT_CATEGORY_META,
   expenseToRow,
   isUuid,
   mapLegacyCategoryId,
@@ -90,6 +91,9 @@ export interface MigrationProgress {
  */
 export async function runMigration(onProgress: (p: MigrationProgress) => void): Promise<number> {
   if (!cloudEnabled) throw new Error("Cloud sync is not configured");
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData.user?.id;
+  if (!userId) throw new Error("Not signed in");
   const [legacyTxs, legacyBudgets, legacyCats, legacyRecs] = await Promise.all([
     db.transactions.toArray(),
     db.budgets.toArray(),
@@ -97,14 +101,15 @@ export async function runMigration(onProgress: (p: MigrationProgress) => void): 
     db.recurrings.toArray(),
   ]);
 
-  // Categories first so expense FKs resolve. Built-ins map onto the
-  // deterministic default ids; custom ones get a per-source hashed id.
+  // Categories first so expense FKs resolve. mapLegacyCategoryId reuses the
+  // user's existing cloud categories by id/name, maps built-in names onto the
+  // user's own default ids, and hashes everything else per user.
   const existing = await repo.getCategories();
   const cloudIds = new Set(existing.map((c) => c.id));
   const catMap = new Map<string, string>();
   const catsToUpsert: Category[] = [];
   for (const c of legacyCats) {
-    const mapped = mapLegacyCategoryId(c.id, cloudIds);
+    const mapped = mapLegacyCategoryId(c.id, userId, existing);
     catMap.set(c.id, mapped);
     if (!cloudIds.has(mapped)) {
       catsToUpsert.push({ ...c, id: mapped, custom: true });
@@ -112,11 +117,11 @@ export async function runMigration(onProgress: (p: MigrationProgress) => void): 
     }
   }
   // If the legacy DB somehow has no categories but references default ids,
-  // map those names directly.
+  // map those names onto the user's default categories.
   for (const t of legacyTxs) {
     if (t.categoryId && !catMap.has(t.categoryId)) {
-      const builtIn = DEFAULT_CATEGORIES.find((c) => c.name.toLowerCase() === t.categoryId);
-      if (builtIn) catMap.set(t.categoryId, builtIn.id);
+      const builtIn = DEFAULT_CATEGORY_META.find((m) => m.name.toLowerCase() === t.categoryId);
+      if (builtIn) catMap.set(t.categoryId, defaultCategoryId(userId, builtIn.name));
     }
   }
 
@@ -127,7 +132,7 @@ export async function runMigration(onProgress: (p: MigrationProgress) => void): 
   const recMap = new Map<string, string>();
   onProgress({ step: "Uploading recurring rules", done: 0, total: legacyRecs.length });
   for (const r of legacyRecs) {
-    const mapped = isUuid(r.id) ? r.id : uuidFromSeed(`rec:${r.id}`);
+    const mapped = isUuid(r.id) ? r.id : uuidFromSeed(`rec:${userId}:${r.id}`);
     recMap.set(r.id, mapped);
     const rec: Recurring = {
       ...r,
@@ -139,7 +144,7 @@ export async function runMigration(onProgress: (p: MigrationProgress) => void): 
 
   onProgress({ step: "Uploading expenses", done: 0, total: legacyTxs.length });
   const txs: Transaction[] = legacyTxs.map((t) => ({
-    id: isUuid(t.id) ? t.id : uuidFromSeed(`exp:${t.id}`),
+    id: isUuid(t.id) ? t.id : uuidFromSeed(`exp:${userId}:${t.id}`),
     amount: t.amount,
     note: t.note,
     categoryId: t.categoryId ? (catMap.get(t.categoryId) ?? "") : "",

@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { cleanOAuthUrl } from "./oauth";
 import { bootUserData, resetDataStore } from "../store/data";
 
 interface AuthResult {
@@ -28,6 +30,7 @@ function messageOf(e: unknown): string {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     supabase.auth
@@ -39,14 +42,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(nextSession);
       // INITIAL_SESSION carries a persisted session on app restart;
       // bootUserData() is idempotent per user, so double-fires are safe.
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && nextSession?.user) {
+      if (event === "INITIAL_SESSION" && nextSession?.user) {
+        // OAuth/PKCE returns land with ?code=… (or #access_token=…): the
+        // client consumed them (detectSessionInUrl: true) — now scrub them
+        // from the address bar so refresh/share never re-processes them.
+        cleanOAuthUrl();
         void bootUserData(nextSession.user.id);
+      } else if (event === "SIGNED_IN" && nextSession?.user) {
+        cleanOAuthUrl();
+        void bootUserData(nextSession.user.id);
+        // After a successful sign-in (password or OAuth redirect) always land
+        // on the dashboard. Deep links like /stats survive restarts because
+        // they only fire INITIAL_SESSION.
+        navigate("/", { replace: true });
       } else if (event === "SIGNED_OUT") {
         resetDataStore();
       }
     });
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
   const value: AuthContextValue = {
     session,
@@ -66,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signInWithGoogle: async () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/` },
+        options: { redirectTo: window.location.origin },
       });
       return error ? { error: messageOf(error) } : {};
     },

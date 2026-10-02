@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Chrome, Loader2, Wallet } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
+import { cleanOAuthUrl, readOAuthErrorFromUrl } from "../auth/oauth";
 import { isSupabaseConfigured } from "../lib/supabase";
 
 /** Clean, mobile-first sign-in / sign-up screen. */
@@ -13,6 +14,14 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  // OAuth failures come back as ?error=…&error_description=… — show them
+  // verbatim so problems are debuggable, then scrub them from the URL.
+  const [oauthError, setOauthError] = useState(() => readOAuthErrorFromUrl());
+
+  useEffect(() => {
+    if (oauthError) cleanOAuthUrl();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // No cloud configured (or already signed in) → nothing to do here.
   if (!isSupabaseConfigured) return <Navigate to="/" replace />;
@@ -43,7 +52,7 @@ export default function Login() {
   };
 
   const inputCls =
-    "w-full rounded-xl bg-slate-100 px-3 py-3 text-[15px] outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 dark:bg-slate-800";
+    "w-full rounded-xl bg-slate-100 px-3 py-3 text-base outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 dark:bg-slate-800";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-[calc(env(safe-area-inset-top,0px)+40px)]">
@@ -61,6 +70,17 @@ export default function Login() {
         </div>
 
         <form onSubmit={submit} className="rounded-3xl bg-white p-5 shadow-sm dark:bg-slate-900" aria-label={mode === "signin" ? "Sign in" : "Sign up"}>
+          {oauthError ? (
+            <div role="alert" className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
+              <p className="font-semibold">Google sign-in failed</p>
+              <p className="mt-0.5 break-words">
+                {oauthError.description} <span className="opacity-70">(error: {oauthError.error})</span>
+              </p>
+              <p className="mt-1 text-xs opacity-80">
+                Common causes: the Google provider isn't enabled in Supabase, or your Vercel URL is missing from Authentication → URL Configuration → Redirect URLs.
+              </p>
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-600 dark:bg-red-950/40 dark:text-red-400">
               {error}

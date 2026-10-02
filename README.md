@@ -66,12 +66,36 @@ Components only ever call the repository/store layer — never Supabase directly
 
    ⚠️ Use only the **anon** key in the frontend — it's safe because RLS scopes every table to the signed-in user. **Never** put the `service_role` key in `.env*`, code, or Vercel.
 
-### Optional: enable "Continue with Google"
+### Google login setup (optional)
 
-1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials) create an **OAuth client ID → Web application**.
-2. Add the authorized redirect URI shown by Supabase (Dashboard → **Authentication → Providers → Google**; it looks like `https://<project-ref>.supabase.co/auth/v1/callback`).
-3. Paste the client ID + secret into **Authentication → Providers → Google** and enable it.
-4. Done — the button on the login screen now works. (Until then it shows a "provider not enabled" message; email sign-in is unaffected.)
+Email/password works out of the box. To enable **"Continue with Google"**, do these three things in order:
+
+**1. Google Cloud Console — create the OAuth client**
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) → create (or select) a project.
+2. **APIs & Services → OAuth consent screen** → choose *External* → fill in the app name + support email → save (publishing is fine for personal use).
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**.
+4. **Authorized redirect URIs** — add exactly:
+   - `https://<project-ref>.supabase.co/auth/v1/callback`
+   (replace `<project-ref>` with your Supabase project ref — the long id in your project URL, also shown in Project Settings → General).
+5. *(Optional)* **Authorized JavaScript origins**: `http://localhost:5173` and your Vercel URL — not strictly required for the Supabase server-side flow, but harmless.
+6. Copy the **Client ID** and **Client secret**.
+
+**2. Supabase — enable the Google provider**
+
+Supabase Dashboard → **Authentication → Sign In / Providers → Google** → toggle **Enable** → paste the Client ID and Client Secret → **Save**.
+
+**3. Supabase — URL Configuration**
+
+Supabase Dashboard → **Authentication → URL Configuration**:
+
+- **Site URL**: your Vercel URL, e.g. `https://spendwise.vercel.app`
+- **Redirect URLs** — add all of these:
+  - `https://spendwise.vercel.app/**` (your Vercel URL with the `/**` wildcard)
+  - `http://localhost:5173/**` (local dev)
+  - optionally `http://localhost:4173/**` for `npm run preview`
+
+That's it. The app calls `supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } })`, so after consenting, the browser returns to your site, the client detects the session in the URL (`detectSessionInUrl: true`), the `?code=…` params are scrubbed from the address bar, and you land on the dashboard. If Google returns an error (provider disabled, unregistered redirect URL, …), the login screen shows the exact `error` / `error_description` from the URL with the most common causes — no blank error page.
 
 ## 2. Run locally
 
@@ -134,7 +158,8 @@ npm run icons    # regenerate PWA icons
 
 ## Troubleshooting
 
-- **"Google sign-in isn't configured" / OAuth error** — the Google provider isn't enabled in Supabase yet, or the redirect URL from step "Optional: enable Google" is missing. Email sign-in works regardless.
+- **Google sign-in shows "Error 400: redirect_uri_mismatch" on accounts.google.com** — Google rejects the request before it ever reaches your app. Go to Google Cloud Console → APIs & Services → Credentials → your OAuth client → **Authorized redirect URIs** and add exactly `https://<project-ref>.supabase.co/auth/v1/callback` (no trailing slash). Your Vercel/localhost URLs do **not** go here — only in Supabase → Authentication → URL Configuration.
+- **"Google sign-in isn't configured" / OAuth error** — the Google provider isn't enabled in Supabase yet, or the redirect URL from the Google login setup section is missing. Email sign-in works regardless.
 - **Email link opens the app but doesn't log me in** — add your production URL (and localhost) to **Authentication → URL Configuration → Redirect URLs**.
 - **No data syncs between two devices** — confirm both are signed into the *same* Supabase project (same `VITE_SUPABASE_URL`) and that `schema.sql` ran successfully (tables exist in **Table Editor**).
 - **Data not updating live** — check the browser console for realtime errors; Realtime requires the `supabase_realtime` publication line that `schema.sql` adds for `expenses`.
