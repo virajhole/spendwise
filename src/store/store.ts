@@ -14,6 +14,8 @@ interface UIState {
   filterCategory: string | null;
   dateFrom: string | null;
   dateTo: string | null;
+  minAmount: number | null;
+  maxAmount: number | null;
   setMonth: (m: string) => void;
   setTheme: (t: ThemeMode) => void;
   setCurrency: (c: string) => void;
@@ -25,6 +27,7 @@ interface UIState {
   setSearch: (s: string) => void;
   setFilterCategory: (c: string | null) => void;
   setDateRange: (from: string | null, to: string | null) => void;
+  setAmountRange: (min: number | null, max: number | null) => void;
 }
 
 type Transaction = import("../db/types").Transaction;
@@ -56,6 +59,8 @@ export const useStore = create<UIState>((set) => ({
   filterCategory: null,
   dateFrom: null,
   dateTo: null,
+  minAmount: null,
+  maxAmount: null,
   setMonth: (m) => set({ month: m }),
   setTheme: (t) => {
     set({ theme: t });
@@ -84,6 +89,7 @@ export const useStore = create<UIState>((set) => ({
   setSearch: (s) => set({ search: s }),
   setFilterCategory: (c) => set({ filterCategory: c }),
   setDateRange: (from, to) => set({ dateFrom: from, dateTo: to }),
+  setAmountRange: (min, max) => set({ minAmount: min, maxAmount: max }),
 }));
 
 function todayMonth(): string {

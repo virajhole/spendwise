@@ -12,6 +12,16 @@
     <link rel="icon" type="image/png" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>SpendWise — Expense Tracker</title>
+    <script>
+      // Apply the saved theme before first paint (no dark-mode flash).
+      try {
+        var t = localStorage.getItem("spendwise.theme") || "system";
+        var dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+        var mc = document.querySelector('meta[name="theme-color"]');
+        if (mc) mc.setAttribute("content", dark ? "#0f1115" : "#0ea5a4");
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

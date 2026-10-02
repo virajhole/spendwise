@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../auth/AuthProvider";
 import { getStoredPin, setStoredPin } from "../hooks/useAppLock";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
+import { getReminder, setReminder, type ReminderPref } from "../utils/reminder";
 import { formatAmount } from "../utils/format";
 import { pushToast } from "../store/toast";
 
@@ -277,6 +278,9 @@ export default function SettingsPage() {
           )}
         </Card>
 
+        {/* Daily reminder */}
+        <ReminderCard />
+
         {/* App lock */}
         <Card title="App lock (PIN)">
           <div className="flex gap-2">
@@ -308,6 +312,65 @@ export default function SettingsPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+/** Daily reminder — fires when the app is first opened after the chosen hour. */
+function ReminderCard() {
+  const [pref, setPref] = useState<ReminderPref>(() => getReminder());
+  const [busy, setBusy] = useState(false);
+
+  const toggle = async () => {
+    setBusy(true);
+    const next = { on: !pref.on, hour: pref.hour };
+    await setReminder(next);
+    setPref(next);
+    setBusy(false);
+    if (next.on && "Notification" in window && Notification.permission === "granted") {
+      pushToast({ kind: "success", message: `Daily reminder on · ${String(next.hour).padStart(2, "0")}:00` });
+    } else if (next.on) {
+      pushToast({ kind: "error", message: "Notification permission denied — enable it in browser settings" });
+    } else {
+      pushToast({ kind: "info", message: "Daily reminder off" });
+    }
+  };
+
+  const setHour = async (hour: number) => {
+    const next = { ...pref, hour };
+    setPref(next);
+    await setReminder(next);
+  };
+
+  return (
+    <Card title="Daily reminder">
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        A notification nudge when you first open the app after the chosen hour.
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          onClick={() => void toggle()}
+          disabled={busy}
+          aria-pressed={pref.on}
+          className={`h-11 flex-1 rounded-xl text-sm font-bold ${
+            pref.on ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+          }`}
+        >
+          {pref.on ? "Reminder on" : "Reminder off"}
+        </button>
+        <select
+          value={pref.hour}
+          onChange={(e) => void setHour(Number(e.target.value))}
+          aria-label="Reminder hour"
+          className="h-11 rounded-xl bg-slate-100 px-2 text-base outline-none dark:bg-slate-800"
+        >
+          {[9, 12, 18, 19, 20, 21].map((h) => (
+            <option key={h} value={h}>
+              {String(h).padStart(2, "0")}:00
+            </option>
+          ))}
+        </select>
+      </div>
+    </Card>
   );
 }
 

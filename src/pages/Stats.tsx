@@ -1,15 +1,38 @@
+import { useEffect, useState } from "react";
 import Header from "../components/Header";
 import { SkeletonBlock } from "../components/Skeletons";
 import { useBudget, useCategories, useTransactions } from "../store/data";
 import { useStore } from "../store/store";
-import { avgPerDay, byCategory, dailySpend, inMonth, monthLabel, projectedMonthEnd, totalExpense } from "../utils/calc";
+import { repo } from "../db/repo";
+import { monthEndDate } from "../db/types";
+import { avgPerDay, byCategory, dailySpend, inMonth, monthLabel, projectedMonthEnd, remainingBalance, shiftMonth, totalExpense } from "../utils/calc";
 import { formatAmount } from "../utils/format";
+import { todayISO } from "../utils/format";
 
 export default function Stats() {
   const { month, currency } = useStore();
   const transactions = useTransactions();
   const categories = useCategories();
-  useBudget(month);
+  const budget = useBudget(month);
+
+  // Last month's total for the comparison card.
+  const prevMonth = shiftMonth(month, -1);
+  const [prevTotal, setPrevTotal] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setPrevTotal(null);
+    void repo
+      .getExpenses({ from: `${prevMonth}-01`, to: monthEndDate(prevMonth) })
+      .then((txs) => {
+        if (!cancelled) setPrevTotal(totalExpense(txs));
+      })
+      .catch(() => {
+        if (!cancelled) setPrevTotal(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [prevMonth]);
 
   const txs = transactions ?? [];
   const monthTxs = inMonth(txs.filter((t) => t.categoryId), month) as (typeof txs[number])[];
@@ -22,6 +45,16 @@ export default function Stats() {
   const daily = dailySpend(txs, month);
   const maxDay = Math.max(...daily.map((d) => d.amount), 1);
   const daysElapsed = monthTxs.length ? new Set(monthTxs.map((t) => t.date)).size : 0;
+
+  // Daily spending limit: what's left of the budget, spread over the days that
+  // remain in the current month. Only meaningful for the current month.
+  const isCurrentMonth = month === todayISO().slice(0, 7);
+  const [yy, mm] = month.split("-").map(Number);
+  const daysLeft = isCurrentMonth ? Math.max(1, new Date(yy, mm, 0).getDate() - new Date().getDate() + 1) : 0;
+  const dailyLimit = budget && budget > 0 && isCurrentMonth ? Math.max(0, remainingBalance(budget, monthTxs)) / daysLeft : null;
+
+  // Month-over-month difference (current total vs the previous month's).
+  const diff = prevTotal === null ? null : total - prevTotal;
 
   const colors = ["#0ea5a4", "#f97316", "#3b82f6", "#ec4899", "#eab308", "#8b5cf6", "#64748b"];
   const R = 56;
@@ -119,6 +152,35 @@ export default function Stats() {
         <section aria-label="Insights" className="mt-4 grid grid-cols-2 gap-3">
           <InsightCard label="Top category" value={top ? `${catMap.get(top.categoryId)?.icon ?? ""} ${catMap.get(top.categoryId)?.name ?? "—"}` : "—"} sub={top ? formatAmount(top.amount, currency) : undefined} />
           <InsightCard label="Avg / day" value={formatAmount(avg, currency)} sub={`${daysElapsed} active day${daysElapsed === 1 ? "" : "s"}`} />
+
+          {/* Daily spending limit (current month + budget set) */}
+          {dailyLimit !== null ? (
+            <InsightCard
+              wide
+              label="Daily limit"
+              value={`${formatAmount(Math.floor(dailyLimit), currency)}/day`}
+              sub={`to stay within budget for the remaining ${daysLeft} day${daysLeft === 1 ? "" : "s"}`}
+            />
+          ) : null}
+
+          {/* Month-over-month comparison */}
+          <InsightCard
+            wide
+            label={`vs ${monthLabel(prevMonth)}`}
+            value={
+              diff === null
+                ? "…"
+                : diff === 0
+                  ? "No change"
+                  : `${diff > 0 ? "+" : "−"}${formatAmount(Math.abs(diff), currency)}`
+            }
+            sub={
+              diff === null
+                ? undefined
+                : `${formatAmount(prevTotal ?? 0, currency)} last month${diff > 0 ? " — spending more" : diff < 0 ? " — saving more" : ""}`
+            }
+          />
+
           <InsightCard label="Projected month-end" value={formatAmount(projected, currency)} sub={`vs ${formatAmount(total, currency)} so far`} wide />
         </section>
       </div>

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "@tanstack/react-virtual": "^3.14.13",
     "dexie": "^4.0.8",
     "framer-motion": "^11.11.9",
     "lucide-react": "^0.462.0",

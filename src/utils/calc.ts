@@ -127,3 +127,28 @@ export function projectedMonthEnd(txs: TxLike[], month: string): number {
   const days = new Date(y, m, 0).getDate();
   return round2(avgPerDay(txs, month) * days);
 }
+
+// ---------------------------------------------------------------------------
+// Category auto-suggestion from note text
+// ---------------------------------------------------------------------------
+
+const CATEGORY_HINTS: Record<string, string[]> = {
+  Food: ["tea", "coffee", "chai", "ice cream", "icecream", "snack", "lunch", "dinner", "breakfast", "food", "groceries", "grocery", "restaurant", "pizza", "burger", "cake"],
+  Travel: ["rapido", "uber", "ola", "bus", "auto", "metro", "train", "fuel", "petrol", "diesel", "cab", "taxi", "flight", "toll"],
+  Bills: ["rent", "electricity", "water bill", "wifi", "internet", "recharge", "bill", "emi", "insurance", "gas"],
+  Fun: ["netflix", "movie", "cinema", "game", "gaming", "concert", "party", "subscription", "spotify"],
+  Health: ["medicine", "medicines", "doctor", "hospital", "pharmacy", "gym", "checkup", "tablet", "test"],
+  Shopping: ["shirt", "clothes", "shopping", "amazon", "flipkart", "shoes", "grocery mall", "mall", "gift"],
+};
+
+/** Guess a built-in category name from the note text, or null. */
+export function suggestCategoryName(note: string): string | null {
+  const text = note.toLowerCase();
+  if (!text.trim()) return null;
+  let best: { name: string; hits: number } | null = null;
+  for (const [name, hints] of Object.entries(CATEGORY_HINTS)) {
+    const hits = hints.reduce((n, h) => (text.includes(h) ? n + 1 : n), 0);
+    if (hits > 0 && (!best || hits > best.hits)) best = { name, hits };
+  }
+  return best?.name ?? null;
+}

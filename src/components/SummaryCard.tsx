@@ -14,7 +14,34 @@ interface Props {
   onSetBudget: (amount: number) => void;
 }
 
-/** Compact monthly summary — fixed above the list, ~120px tall on a 360px screen. */
+/** Slim sticky summary shown when the full card scrolls away. */
+export function SlimSummary({
+  remaining, pct, currency, visible,
+}: {
+  remaining: number;
+  pct: number;
+  currency: string;
+  visible: boolean;
+}) {
+  return (
+    <div
+      style={{ maxHeight: visible ? 36 : 0 }}
+      className="flex items-center gap-2 overflow-hidden border-t border-slate-200/60 bg-slate-100 px-3 transition-[max-height] duration-200 dark:border-slate-800/60 dark:bg-[#0f1115]"
+      aria-hidden={!visible}
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Remaining</span>
+      <span className={`text-sm font-bold ${pct >= 100 ? "text-red-500 dark:text-red-400" : ""}`}>
+        {formatAmount(remaining, currency)}
+      </span>
+      <div className="ml-auto h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800" role="progressbar" aria-valuenow={Math.min(100, Math.round(pct))} aria-label={`${Math.round(pct)}% of budget used`}>
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${Math.min(100, pct)}%`, backgroundColor: pct >= 100 ? "#ef4444" : pct >= 80 ? "#f97316" : "#0ea5a4" }}
+        />
+      </div>
+    </div>
+  );
+}
 export default function SummaryCard({ month, budget, transactions, currency, onSetBudget }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");

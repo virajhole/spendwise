@@ -61,6 +61,22 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    build: {
+      rollupOptions: {
+        output: {
+          // Split stable vendor libraries into their own cacheable chunks so
+          // app-code changes don't re-download everything.
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return undefined;
+            if (id.includes("framer-motion")) return "vendor-motion";
+            if (id.includes("@supabase")) return "vendor-supabase";
+            if (id.includes("dexie") || id.includes("@tanstack")) return "vendor-data";
+            if (id.includes("/react") || id.includes("react-dom") || id.includes("scheduler") || id.includes("lucide")) return "vendor-react";
+            return "vendor-misc";
+          },
+        },
+      },
+    },
     test: {
       environment: "node",
       globals: true,
