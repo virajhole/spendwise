@@ -19,8 +19,13 @@ import {
 import { budgetUsedPct, remainingBalance } from "../utils/calc";
 import { currentTime, todayISO } from "../utils/format";
 
+/**
+ * Home screen for a 360x780 phone: compact header, compact summary (fixed —
+ * always visible without scrolling), then the scrollable transactions, then
+ * the input dock. The summary never scrolls away.
+ */
 export default function Dashboard() {
-  const { month, currency, collapsed, toggleCollapsed, editing, setEditing, dateFrom, dateTo } = useStore();
+  const { month, currency, collapsed, setCollapsed, editing, setEditing, dateFrom, dateTo } = useStore();
   const transactions = useTransactions();
   const categories = useCategories();
   const budget = useBudget(month);
@@ -38,14 +43,18 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Header month={month} />
+
+      {/* Fixed summary — always visible without scrolling */}
+      <SummaryCard
+        month={month}
+        budget={budget}
+        transactions={transactions}
+        currency={currency}
+        onSetBudget={(amount) => void setBudget(month, amount)}
+      />
+
+      {/* Scrollable area: alerts, filters, transactions */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <SummaryCard
-          month={month}
-          budget={budget}
-          transactions={transactions}
-          currency={currency}
-          onSetBudget={(amount) => void setBudget(month, amount)}
-        />
         <AlertBanner pct={pct} over={over} />
         <FilterBar categories={categories} />
         <TransactionList
@@ -58,11 +67,12 @@ export default function Dashboard() {
           onRestore={(t) => void restoreExpense(t)}
         />
       </div>
+
       <InputPad
         categories={categories}
         currency={currency}
         collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
+        onSetCollapsed={setCollapsed}
         onSubmit={handleSubmit}
       />
 

@@ -21,6 +21,7 @@ interface UIState {
   setCurrencyLocal: (c: string) => void;
   setEditing: (t: Transaction | null) => void;
   toggleCollapsed: () => void;
+  setCollapsed: (c: boolean) => void;
   setSearch: (s: string) => void;
   setFilterCategory: (c: string | null) => void;
   setDateRange: (from: string | null, to: string | null) => void;
@@ -50,7 +51,7 @@ export const useStore = create<UIState>((set) => ({
   theme: "system",
   currency: "₹",
   editing: null,
-  collapsed: false,
+  collapsed: true, // input dock starts as the compact bar
   search: "",
   filterCategory: null,
   dateFrom: null,
@@ -79,6 +80,7 @@ export const useStore = create<UIState>((set) => ({
   },
   setEditing: (t) => set({ editing: t }),
   toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
+  setCollapsed: (c) => set({ collapsed: c }),
   setSearch: (s) => set({ search: s }),
   setFilterCategory: (c) => set({ filterCategory: c }),
   setDateRange: (from, to) => set({ dateFrom: from, dateTo: to }),

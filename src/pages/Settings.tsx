@@ -20,6 +20,7 @@ import {
 } from "../store/data";
 import { useAuth } from "../auth/AuthProvider";
 import { getStoredPin, setStoredPin } from "../hooks/useAppLock";
+import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import { formatAmount } from "../utils/format";
 import { pushToast } from "../store/toast";
 
@@ -119,6 +120,9 @@ export default function SettingsPage() {
             </button>
           </Card>
         ) : null}
+
+        {/* App install (PWA) */}
+        <InstallCard />
 
         {/* Appearance */}
         <Card title="Appearance">
@@ -313,6 +317,52 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">{title}</h2>
       {children}
     </section>
+  );
+}
+
+/** In-app install option (PWA). Shows only when the browser actually allows it. */
+function InstallCard() {
+  const { canInstall, installed, install } = useInstallPrompt();
+  const [busy, setBusy] = useState(false);
+  const isSamsung = typeof navigator !== "undefined" && /SamsungBrowser/i.test(navigator.userAgent);
+
+  if (installed) {
+    return (
+      <Card title="App">
+        <p className="text-sm text-slate-500 dark:text-slate-400">✓ Installed — you're using the installed app.</p>
+      </Card>
+    );
+  }
+  if (!canInstall && !isSamsung) return null; // browser will decide (needs HTTPS deployment)
+
+  return (
+    <Card title="Install app">
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        Add SpendWise to your home screen — fullscreen, offline-ready, synced.
+      </p>
+      {canInstall ? (
+        <button
+          onClick={async () => {
+            setBusy(true);
+            const outcome = await install();
+            setBusy(false);
+            if (outcome === "accepted") pushToast({ kind: "success", message: "App installed 🎉" });
+          }}
+          disabled={busy}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+        >
+          ⬇ Install SpendWise
+        </button>
+      ) : null}
+      {isSamsung ? (
+        <p className="mt-2 text-xs text-slate-400">
+          Samsung Internet: tap <span className="font-semibold">⋮ → Add page to → Home screen</span> to install.
+        </p>
+      ) : null}
+      {!canInstall && isSamsung ? (
+        <p className="mt-1 text-xs text-slate-400">Install needs the HTTPS deployment (Vercel) — not localhost.</p>
+      ) : null}
+    </Card>
   );
 }
 

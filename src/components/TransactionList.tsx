@@ -251,12 +251,14 @@ function SwipeableRow({ t, cat, currency, isOpen, anyOpen, onOpenChange, onDelet
       exit={{ opacity: 0, height: 0, transition: { duration: 0.18, ease: "easeInOut" } }}
       className="relative overflow-hidden"
     >
-      {/* Delete action — BEHIND the row (z-0), revealed as the row slides left. */}
+      {/* Delete action — BEHIND the row (z-0), revealed as the row slides left.
+          touch-action: none stops the browser from turning a slightly-moving
+          tap into a scroll (which would swallow the click on real phones). */}
       <button
         type="button"
         onClick={() => onDelete(t)}
         aria-label={`Delete ${t.note || "expense"}`}
-        className="absolute inset-y-0 right-0 z-0 flex w-20 items-center justify-center bg-red-500 text-xl text-white active:bg-red-600"
+        className="absolute inset-y-0 right-0 z-0 flex w-20 touch-none items-center justify-center bg-red-500 text-xl text-white active:bg-red-600"
       >
         ✕
       </button>

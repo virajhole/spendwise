@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { Pencil } from "lucide-react";
-import type { Category, Transaction } from "../db/db";
+import type { Transaction } from "../db/types";
 import { budgetUsedPct, remainingBalance, totalExpense } from "../utils/calc";
 import { formatAmount } from "../utils/format";
 import { useHaptics } from "../hooks/useHaptics";
@@ -14,6 +14,7 @@ interface Props {
   onSetBudget: (amount: number) => void;
 }
 
+/** Compact monthly summary — fixed above the list, ~120px tall on a 360px screen. */
 export default function SummaryCard({ month, budget, transactions, currency, onSetBudget }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -36,7 +37,7 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
       return;
     }
     controls.start({
-      scale: [1, 1.12, 1],
+      scale: [1, 1.1, 1],
       transition: { duration: 0.3, ease: "easeOut" },
     });
   }, [total, controls]);
@@ -49,15 +50,15 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
   };
 
   return (
-    <section aria-label="Monthly summary" className="px-4">
-      <div className="rounded-3xl bg-gradient-to-br from-teal-600 to-teal-800 p-5 text-white shadow-lg shadow-teal-900/20 dark:from-teal-800 dark:to-teal-950">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-teal-100/80">
-              Monthly Budget · {new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1).toLocaleDateString("en-US", { month: "short" })}
+    <section aria-label="Monthly summary" className="px-3 pt-2">
+      <div className="rounded-2xl bg-gradient-to-br from-teal-600 to-teal-800 p-3 text-white shadow-lg shadow-teal-900/20 dark:from-teal-800 dark:to-teal-950">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-teal-100/80">
+              Budget · {new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1).toLocaleDateString("en-US", { month: "short" })}
             </p>
             {editing ? (
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-0.5 flex items-center gap-1.5">
                 <input
                   autoFocus
                   inputMode="decimal"
@@ -66,9 +67,9 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
                   onKeyDown={(e) => e.key === "Enter" && save()}
                   aria-label="Budget amount"
                   placeholder={String(b || "")}
-                  className="w-28 rounded-xl bg-white/15 px-3 py-1.5 text-xl font-bold outline-none placeholder:text-teal-100/50"
+                  className="w-24 rounded-lg bg-white/15 px-2 py-0.5 text-lg font-bold outline-none placeholder:text-teal-100/50"
                 />
-                <button onClick={save} className="rounded-xl bg-white px-3 py-1.5 text-sm font-semibold text-teal-800">
+                <button onClick={save} className="rounded-lg bg-white px-2.5 py-0.5 text-xs font-semibold text-teal-800">
                   Save
                 </button>
               </div>
@@ -79,30 +80,30 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
                   setEditing(true);
                   haptic(10);
                 }}
-                className="group flex items-center gap-2 text-left"
+                className="group flex items-center gap-1.5 text-left"
                 aria-label={`Monthly budget ${formatAmount(b, currency)}. Tap to edit`}
               >
-                <span className="text-3xl font-extrabold tracking-tight">{formatAmount(b, currency)}</span>
-                <Pencil size={14} className="text-teal-100/70 group-hover:text-white" aria-hidden />
+                <span className="text-2xl font-extrabold leading-7 tracking-tight">{formatAmount(b, currency)}</span>
+                <Pencil size={12} className="text-teal-100/70 group-hover:text-white" aria-hidden />
               </button>
             )}
           </div>
           <div className="text-right">
-            <p className="text-xs font-medium uppercase tracking-wide text-teal-100/80">Total Expense</p>
-            <motion.p animate={controls} className="origin-right text-2xl font-bold tabular-nums">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-teal-100/80">Total Expense</p>
+            <motion.p animate={controls} className="origin-right text-xl font-bold leading-6 tabular-nums">
               {formatAmount(total, currency)}
             </motion.p>
           </div>
         </div>
 
-        <div className="mt-4">
+        <div className="mt-2">
           <div
             role="progressbar"
             aria-valuenow={Math.min(100, Math.round(pct))}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label={`${Math.round(pct)}% of budget used`}
-            className="h-2.5 w-full overflow-hidden rounded-full bg-white/20"
+            className="h-2 w-full overflow-hidden rounded-full bg-white/20"
           >
             <motion.div
               className="h-full rounded-full"
@@ -112,13 +113,11 @@ export default function SummaryCard({ month, budget, transactions, currency, onS
               transition={{ type: "spring", stiffness: 120, damping: 20 }}
             />
           </div>
-          <div className="mt-2 flex items-end justify-between">
-            <div>
-              <p className="text-xs text-teal-100/80">{over ? "Over budget" : "Remaining Balance"}</p>
-              <p className={`text-xl font-bold ${over ? "text-red-300" : ""}`}>{formatAmount(remaining, currency)}</p>
-            </div>
-            <p className="text-xs font-medium text-teal-100/80">{b > 0 ? `${Math.round(pct)}% used` : "No budget set"}</p>
+          <div className="mt-1 flex items-center justify-between">
+            <p className="text-[11px] text-teal-100/80">{over ? "Over budget" : "Remaining"}</p>
+            <p className={`text-sm font-bold leading-5 ${over ? "text-red-300" : ""}`}>{formatAmount(remaining, currency)}</p>
           </div>
+          <p className="text-right text-[10px] font-medium text-teal-100/80">{b > 0 ? `${Math.round(pct)}% used` : "No budget set"}</p>
         </div>
       </div>
     </section>

@@ -7,6 +7,9 @@ import ToastHost from "./components/ToastHost";
 import { AuthProvider } from "./auth/AuthProvider";
 import "./index.css";
 import { initSettings } from "./store/store";
+import { initViewportHeight } from "./utils/viewport";
+
+initViewportHeight();
 
 function mount() {
   ReactDOM.createRoot(document.getElementById("root")!).render(
