@@ -14,6 +14,15 @@ export interface PendingWrite {
   attempts: number;
 }
 
+/** Per-account snapshot of cloud data, used to reopen the app offline. */
+export interface CloudCacheRecord {
+  id: string;
+  userId: string;
+  kind: string;
+  value: unknown;
+  updatedAt: number;
+}
+
 class ExpenseDB extends Dexie {
   transactions!: Table<Transaction, string>;
   budgets!: Table<Budget, string>;
@@ -21,6 +30,7 @@ class ExpenseDB extends Dexie {
   recurrings!: Table<Recurring, string>;
   settings!: Table<Settings, string>;
   pendingWrites!: Table<PendingWrite, string>;
+  cloudCache!: Table<CloudCacheRecord, string>;
 
   constructor() {
     super("spendwise-db");
@@ -35,6 +45,15 @@ class ExpenseDB extends Dexie {
     // migration source and the local-only fallback store.
     this.version(2).stores({
       pendingWrites: "id, userId, createdAt",
+    });
+    this.version(3).stores({
+      transactions: "id, date, categoryId, createdAt",
+      budgets: "month",
+      categories: "id, name",
+      recurrings: "id",
+      settings: "key",
+      pendingWrites: "id, userId, createdAt",
+      cloudCache: "id, userId, kind, [userId+kind], updatedAt",
     });
   }
 }

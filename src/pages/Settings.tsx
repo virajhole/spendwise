@@ -24,7 +24,7 @@ import { pushToast } from "../store/toast";
 
 
 export default function SettingsPage() {
-  const { theme, setTheme } = useStore();
+  const { theme, setTheme, smartEntryEnabled, setSmartEntryEnabled } = useStore();
   const { user, signOut } = useAuth();
   const categories = useCategories();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -135,6 +135,34 @@ export default function SettingsPage() {
                 {t}
               </button>
             ))}
+          </div>
+        </Card>
+
+        {/* Smart entry (AI) */}
+        <Card title="Smart entry (AI)">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">AI fallback for Quick Entry</p>
+              <p className="text-xs text-slate-400">
+                On uses AI when you're online and local parsing needs help. Off always uses local parsing; cloud sync still works when online. Previously loaded data stays available offline.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={smartEntryEnabled}
+              aria-label="Toggle smart entry"
+              onClick={() => setSmartEntryEnabled(!smartEntryEnabled)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                smartEntryEnabled ? "bg-teal-600" : "bg-slate-300 dark:bg-slate-700"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  smartEntryEnabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
         </Card>
 

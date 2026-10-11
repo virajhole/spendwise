@@ -30,6 +30,22 @@ test.describe("Add expense", () => {
   test("ambiguous chat does not create an expense", async ({ page }) => {
     await page.getByLabel("Quick expense").fill("chai 15 20");
     await page.getByRole("button", { name: "Send expense" }).click();
-    await expect(page.getByRole("alert")).toContainText("Use one amount");
+    await expect(page.getByRole("alert")).toContainText("Ek amount");
+  });
+  test("local mode: QuickEntry works with rule parser and no LLM UI appears", async ({ page }) => {
+    // Verify AI enabled badge is NOT visible in local mode
+    await expect(page.getByText("AI enabled")).toHaveCount(0);
+
+    // Rule parser entry succeeds
+    await page.getByLabel("Quick expense").fill("Burger King 173 SBI cc");
+    await page.getByRole("button", { name: "Send expense" }).click();
+
+    // No AI preview dialog appears
+    await expect(page.getByText("AI Smart Entry")).toHaveCount(0);
+
+    // Expense is saved directly
+    await expect(page.getByLabel("Quick expense")).toHaveValue("");
+    await expect(page.getByRole("button", { name: /Edit Burger King/ })).toBeVisible();
   });
 });
+

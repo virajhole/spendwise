@@ -19,6 +19,10 @@ export const cloudEnabled = isSupabaseConfigured;
 
 export const repo = isSupabaseConfigured ? createSupabaseRepository(supabase) : createDexieRepository();
 
+export function parseEntryWithLLM(text: string, ctx: import("./types").LLMParseContext): Promise<import("./types").LLMParseResult> {
+  return repo.parseEntryWithLLM(text, ctx);
+}
+
 /** Apply a write op now (used by optimistic writes and the offline flush). */
 export function applyOp(op: QueuedOp): Promise<void> {
   return isSupabaseConfigured ? applyQueuedOp(supabase, op) : applyOpLocal(op);

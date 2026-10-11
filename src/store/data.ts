@@ -31,6 +31,7 @@ import {
   type Transaction,
 } from "../db/repo";
 import type { PendingWrite } from "../db/db";
+import { deleteCloudCache, deleteCloudCacheEntry, listCloudCache, readCloudCache, saveCloudCache } from "../db/cloudCache";
 import { hasLegacyData, markMigrationDismissed, markMigrationDone, migrationState, runMigration } from "../db/migrate";
 import { pushToast } from "./toast";
 import { useStore as useUIStore } from "./store";
@@ -82,6 +83,30 @@ let bootedFor: string | null = null;
 let channel: RealtimeChannel | null = null;
 let recurringRun: Promise<void> | null = null;
 const rangeRequests = new Map<string, Promise<void>>();
+
+async function cachedCloudLoad<T>(
+  userId: string,
+  kind: string,
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  if (!cloudEnabled) return load();
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const cached = await readCloudCache<T>(userId, kind, key);
+    if (cached !== undefined) return cached;
+    throw new Error("No saved data for this view yet. Reconnect once to download it for offline use.");
+  }
+
+  try {
+    const value = await load();
+    await saveCloudCache(userId, kind, key, value);
+    return value;
+  } catch (error) {
+    const cached = await readCloudCache<T>(userId, kind, key);
+    if (cached !== undefined) return cached;
+    throw error;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // React hooks (components read data ONLY through these)
@@ -188,7 +213,7 @@ export async function bootUserData(userId: string): Promise<void> {
   }
 
   // Settings are independent of ledger writes; don't block the first data fetch.
-  void repo.getSettings().then(s => {
+  void cachedCloudLoad(userId, "settings", "app", () => repo.getSettings()).then(s => {
     if (get().userId !== userId) return;
     if (s.theme) useUIStore.getState().setThemeLocal(s.theme);
     if (s.currency) useUIStore.getState().setCurrencyLocal(s.currency);
@@ -208,21 +233,21 @@ export async function bootUserData(userId: string): Promise<void> {
   if (get().userId !== userId) return;
   void loadRange(currentRange());
   const [categories, recurrings, pendingOps] = await Promise.all([
-    repo.getCategories().then(async cats => {
+    cachedCloudLoad(userId, "categories", "all", async () => {
+      let cats = await repo.getCategories();
       if (cats.length) return cats;
       await repo.ensureDefaults();
       return repo.getCategories();
+    }).catch((e) => {
+      pushToast({ kind: "info", message: e instanceof Error ? e.message : "Couldn't load categories" });
+      return [] as Category[];
     }),
-    repo.getRecurrings(),
+    cachedCloudLoad(userId, "recurrings", "all", () => repo.getRecurrings()).catch((e) => {
+      pushToast({ kind: "info", message: e instanceof Error ? e.message : "Couldn't load recurring expenses" });
+      return [] as Recurring[];
+    }),
     loadPendingOps(userId),
-  ]).catch((e) => {
-    pushToast({
-      kind: "error",
-      message: `Couldn't load your data — ${e instanceof Error ? e.message : "error"}`,
-      action: { label: "Retry", run: () => location.reload() },
-    });
-    return [undefined, undefined, []] as const;
-  });
+  ]);
   if (get().userId !== userId) return;
   set({ categories, recurrings, pendingOps: pendingOps as PendingWrite[], booted: true });
 
@@ -328,6 +353,8 @@ function applyUpsertLocal(tx: Transaction): void {
     }
     return { ranges };
   });
+  const userId = get().userId;
+  if (cloudEnabled && userId) void updateCachedRanges(userId, tx.id, tx);
 }
 
 function applyRemoveLocal(id: string): void {
@@ -338,9 +365,12 @@ function applyRemoveLocal(id: string): void {
     }
     return { ranges };
   });
+  const userId = get().userId;
+  if (cloudEnabled && userId) void updateCachedRanges(userId, id);
 }
 
 function applyPatchLocal(id: string, patch: ExpensePatch): void {
+  const existing = findTxAnywhere(id);
   set((s) => {
     const ranges: Record<string, Transaction[]> = {};
     for (const [key, rows] of Object.entries(s.ranges)) {
@@ -348,6 +378,19 @@ function applyPatchLocal(id: string, patch: ExpensePatch): void {
     }
     return { ranges };
   });
+  const userId = get().userId;
+  if (cloudEnabled && userId && existing) void updateCachedRanges(userId, id, { ...existing, ...patch });
+}
+
+async function updateCachedRanges(userId: string, id: string, replacement?: Transaction): Promise<void> {
+  const prefix = `${userId}:range:`;
+  const snapshots = await listCloudCache<Transaction[]>(userId, "range");
+  await Promise.all(snapshots.map(async (snapshot) => {
+    const [from, to] = snapshot.id.slice(prefix.length).split(":");
+    const rows = snapshot.value.filter((row) => row.id !== id);
+    if (replacement && replacement.date >= from && replacement.date <= to) rows.push(replacement);
+    await saveCloudCache(userId, "range", `${from}:${to}`, rows);
+  }));
 }
 
 function findTxAnywhere(id: string): Transaction | undefined {
@@ -542,14 +585,21 @@ export async function restoreExpense(t: Transaction): Promise<void> {
 export async function setBudget(month: string, amount: number): Promise<void> {
   const prev = get().budgets[month];
   set((s) => ({ budgets: { ...s.budgets, [month]: amount } }));
+  const userId = get().userId;
+  if (cloudEnabled && userId) void saveCloudCache(userId, "budgets", month, amount);
   await runWrite({ kind: "budget.set", month, amount }, {
-    rollback: () =>
+    rollback: () => {
       set((s) => {
         const budgets = { ...s.budgets };
         if (prev === undefined) delete budgets[month];
         else budgets[month] = prev;
         return { budgets };
-      }),
+      });
+      if (cloudEnabled && userId) {
+        if (prev !== undefined) void saveCloudCache(userId, "budgets", month, prev);
+        else void deleteCloudCacheEntry(userId, "budgets", month);
+      }
+    },
     label: "budget",
   });
 }
@@ -557,12 +607,14 @@ export async function setBudget(month: string, amount: number): Promise<void> {
 async function loadBudget(month: string): Promise<void> {
   set((s) => ({ budgets: { ...s.budgets, [month]: null } })); // mark in-flight
   try {
-    const amount = await repo.getBudget(month);
-    if (typeof amount === "number") set((s) => ({ budgets: { ...s.budgets, [month]: amount } }));
-  } catch {
+    const userId = get().userId;
+    if (!userId) return;
+    const amount = await cachedCloudLoad(userId, "budgets", month, async () => (await repo.getBudget(month)) ?? null);
+    set((s) => ({ budgets: { ...s.budgets, [month]: amount } }));
+  } catch (e) {
     pushToast({
-      kind: "error",
-      message: "Couldn't load budget",
+      kind: "info",
+      message: e instanceof Error ? e.message : "Couldn't load budget",
       action: { label: "Retry", run: () => void loadBudget(month) },
     });
   }
@@ -677,6 +729,7 @@ export async function pushSettingsUpdate(patch: SettingsPatch): Promise<void> {
 export async function loadRange(range: DateRange, opts: { force?: boolean } = {}): Promise<void> {
   const key = `${range.from}:${range.to}`;
   const userId = get().userId;
+  if (!userId) return;
   const requestKey = `${userId}:${key}`;
   if (!opts.force && get().ranges[key]) return;
   const pendingRequest = rangeRequests.get(requestKey);
@@ -684,18 +737,24 @@ export async function loadRange(range: DateRange, opts: { force?: boolean } = {}
   const request = (async () => {
     set((s) => ({ loadingRange: s.ranges[key] ? s.loadingRange : key }));
     try {
-      const rows = await repo.getExpenses(range);
+      const rows = await cachedCloudLoad(userId, "range", key, () => repo.getExpenses(range));
       if (get().userId !== userId) return;
       set((s) => ({ ranges: { ...s.ranges, [key]: rows }, loadingRange: null }));
     } catch (e) {
       if (get().userId !== userId) return;
-      set({ loadingRange: null });
-      if (isNetworkError(e)) {
+      const cached = userId ? await readCloudCache<Transaction[]>(userId, "range", key).catch(() => undefined) : undefined;
+      set((s) => ({
+        loadingRange: null,
+        ranges: cached ? { ...s.ranges, [key]: cached } : { ...s.ranges, [key]: [] },
+      }));
+      if (isNetworkError(e) && cached) {
         pushToast({
-          kind: "error",
-          message: "You're offline — showing cached data",
+          kind: "info",
+          message: "You're offline — showing your last saved data",
           action: { label: "Retry", run: () => void loadRange(range, { force: true }) },
         });
+      } else if (isNetworkError(e)) {
+        pushToast({ kind: "info", message: "No saved copy of this period yet. Reconnect once to make it available offline." });
       } else {
         pushToast({
           kind: "error",
@@ -727,6 +786,7 @@ export async function clearAllData(): Promise<void> {
   const userId = get().userId;
   if (userId) await clearQueuedOps(userId);
   await repo.clearAll();
+  if (cloudEnabled && userId) await deleteCloudCache(userId);
   await reloadPendingOps();
   await refreshAllData();
 }

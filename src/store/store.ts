@@ -16,11 +16,13 @@ interface UIState {
   dateTo: string | null;
   minAmount: number | null;
   maxAmount: number | null;
+  smartEntryEnabled: boolean;
   setMonth: (m: string) => void;
   setTheme: (t: ThemeMode) => void;
   setCurrency: (c: string) => void;
   setThemeLocal: (t: ThemeMode) => void;
   setCurrencyLocal: (c: string) => void;
+  setSmartEntryEnabled: (enabled: boolean) => void;
   setEditing: (t: Transaction | null) => void;
   toggleCollapsed: () => void;
   setCollapsed: (c: boolean) => void;
@@ -34,6 +36,7 @@ type Transaction = import("../db/types").Transaction;
 
 const THEME_KEY = "spendwise.theme";
 const CURRENCY_KEY = "spendwise.currency";
+const SMART_ENTRY_KEY = "spendwise.smart_entry";
 
 function cacheSetting(key: string, value: string): void {
   try {
@@ -61,6 +64,7 @@ export const useStore = create<UIState>((set) => ({
   dateTo: null,
   minAmount: null,
   maxAmount: null,
+  smartEntryEnabled: cachedSetting<string>(SMART_ENTRY_KEY) !== "false",
   setMonth: (m) => set({ month: m }),
   setTheme: (t) => {
     set({ theme: t });
@@ -82,6 +86,10 @@ export const useStore = create<UIState>((set) => ({
   setCurrencyLocal: (c) => {
     set({ currency: c });
     cacheSetting(CURRENCY_KEY, c);
+  },
+  setSmartEntryEnabled: (enabled) => {
+    set({ smartEntryEnabled: enabled });
+    cacheSetting(SMART_ENTRY_KEY, String(enabled));
   },
   setEditing: (t) => set({ editing: t }),
   toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),

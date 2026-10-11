@@ -176,5 +176,9 @@ export function createDexieRepository(): DataRepository {
     async clearAll(): Promise<void> {
       await Promise.all([db.transactions.clear(), db.budgets.clear(), db.recurrings.clear(), db.settings.clear()]);
     },
+
+    async parseEntryWithLLM(): Promise<never> {
+      throw new Error("Smart entry is not available in local-only mode.");
+    },
   };
 }

@@ -32,6 +32,8 @@ import {
   type SettingsPatch,
   type SettingsRow,
   type Transaction,
+  type LLMParseContext,
+  type LLMParseResult,
 } from "./types";
 
 const PAGE = 1000;
@@ -415,6 +417,31 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
         client.from("recurring_expenses").delete().not("id", "is", null),
       ]);
       for (const r of results) throwIfError(r);
+    },
+
+    async parseEntryWithLLM(text: string, ctx: LLMParseContext): Promise<LLMParseResult> {
+      const { data, error } = await client.functions.invoke("parse-entry", {
+        body: {
+          text,
+          categories: ctx.categories.map((c) => ({ id: c.id, name: c.name })),
+          contacts: ctx.contacts,
+          today: ctx.today,
+          cards: ctx.cards,
+        },
+      });
+      if (error) {
+        let msg = error.message;
+        try {
+          const ctxRes = (error as { context?: Response }).context;
+          if (ctxRes && typeof ctxRes.json === "function") {
+            const body = await ctxRes.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch { /* use default message */ }
+        throw new Error(msg || "Failed to parse entry with AI");
+      }
+      if (data?.error) throw new Error(data.error);
+      return data as LLMParseResult;
     },
   };
 

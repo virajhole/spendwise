@@ -472,4 +472,37 @@ export interface DataRepository {
   importAll(data: Backup): Promise<number>;
   /** Deletes expenses, budgets and recurring rules (categories/settings stay). */
   clearAll(): Promise<void>;
+
+  // ai / smart entry
+  parseEntryWithLLM(text: string, ctx: LLMParseContext): Promise<LLMParseResult>;
 }
+
+export interface LLMAlternative {
+  kind: "expense" | "lent" | "borrowed" | "split" | "settlement" | "card_payment";
+  label: string;
+  shares?: { name: string; amount: number; isMe?: boolean }[] | null;
+}
+
+export interface LLMParseResult {
+  kind: "expense" | "lent" | "borrowed" | "split" | "settlement" | "card_payment";
+  amount: number;
+  person: string | null;
+  note: string;
+  categoryId: string | null;
+  paymentMethod: PaymentMethod;
+  cardName: string | null;
+  direction: "in" | "out" | null;
+  shares: { name: string; amount: number; isMe?: boolean }[] | null;
+  date: string | null;
+  confidence: number;
+  ambiguous: boolean;
+  alternatives?: LLMAlternative[];
+}
+
+export interface LLMParseContext {
+  categories: Category[];
+  contacts: string[];
+  today: string;
+  cards?: string[];
+}
+
