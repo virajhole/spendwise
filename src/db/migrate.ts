@@ -152,9 +152,10 @@ export async function runMigration(onProgress: (p: MigrationProgress) => void): 
     time: t.time,
     createdAt: t.createdAt,
     recurringId: t.recurringId ? recMap.get(t.recurringId) : undefined,
+    finance: t.finance?.settlesId ? { ...t.finance, settlesId: isUuid(t.finance.settlesId) ? t.finance.settlesId : uuidFromSeed(`exp:${userId}:${t.finance.settlesId}`) } : t.finance,
   }));
   let uploaded = 0;
-  for (const part of chunk(txs, 200)) {
+  for (const part of chunk([...txs].sort((a,b) => Number(a.finance?.kind === "settlement") - Number(b.finance?.kind === "settlement")), 200)) {
     await batchUpsertExpenses(part);
     uploaded += part.length;
     onProgress({ step: "Uploading expenses", done: uploaded, total: txs.length });

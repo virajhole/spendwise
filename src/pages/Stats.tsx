@@ -1,43 +1,25 @@
-import { useEffect, useState } from "react";
 import Header from "../components/Header";
 import { SkeletonBlock } from "../components/Skeletons";
-import { useBudget, useCategories, useTransactions } from "../store/data";
+import { useBudget, useCategories, useLedger } from "../store/data";
+import ReportOverview from "../components/ReportOverview";
 import { useStore } from "../store/store";
-import { repo } from "../db/repo";
-import { monthEndDate } from "../db/types";
+import { isSpending } from "../utils/finance";
 import { avgPerDay, byCategory, dailySpend, inMonth, monthLabel, projectedMonthEnd, remainingBalance, shiftMonth, totalExpense } from "../utils/calc";
 import { formatAmount } from "../utils/format";
 import { todayISO } from "../utils/format";
 
 export default function Stats() {
   const { month, currency } = useStore();
-  const transactions = useTransactions();
+  const transactions = useLedger();
   const categories = useCategories();
   const budget = useBudget(month);
 
-  // Last month's total for the comparison card. The total is stored together
-  // with the month it belongs to, so a slow fetch never shows stale data.
   const prevMonth = shiftMonth(month, -1);
-  const [prev, setPrev] = useState<{ month: string; total: number } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void repo
-      .getExpenses({ from: `${prevMonth}-01`, to: monthEndDate(prevMonth) })
-      .then((txs) => {
-        if (!cancelled) setPrev({ month: prevMonth, total: totalExpense(txs) });
-      })
-      .catch(() => {
-        if (!cancelled) setPrev(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [prevMonth]);
-  const prevTotal = prev && prev.month === prevMonth ? prev.total : null;
+  const prevTotal = transactions ? totalExpense(transactions.filter(t => t.date.startsWith(prevMonth))) : null;
 
   const txs = transactions ?? [];
-  const monthTxs = inMonth(txs.filter((t) => t.categoryId), month) as (typeof txs[number])[];
-  const catTotals = byCategory(monthTxs.map((t) => ({ amount: t.amount, date: t.date, categoryId: t.categoryId })));
+  const monthTxs = inMonth(txs.filter(isSpending), month) as (typeof txs[number])[];
+  const catTotals = byCategory(monthTxs);
   const catMap = new Map(categories.map((c) => [c.id, c]));
   const total = totalExpense(monthTxs);
   const top = catTotals[0];
@@ -81,6 +63,7 @@ export default function Stats() {
     <div className="flex min-h-0 flex-1 flex-col">
       <Header month={month} />
       <div className="flex-1 overflow-y-auto px-4 pb-6">
+        <ReportOverview ledger={txs} month={month} currency={currency} />
         {/* Donut chart */}
         <section aria-label="Spending by category" className="mt-2 rounded-3xl bg-white p-5 shadow-sm dark:bg-slate-900">
           <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">By category</h2>

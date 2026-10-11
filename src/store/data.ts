@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { validateFinance } from "../utils/finance";
 import { create } from "zustand";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
@@ -80,6 +81,7 @@ const set = useDataStore.setState;
 let bootedFor: string | null = null;
 let channel: RealtimeChannel | null = null;
 let recurringRun: Promise<void> | null = null;
+const rangeRequests = new Map<string, Promise<void>>();
 
 // ---------------------------------------------------------------------------
 // React hooks (components read data ONLY through these)
@@ -87,13 +89,13 @@ let recurringRun: Promise<void> | null = null;
 
 /** Transactions for the viewed month (or the custom date filter range).
  *  `undefined` while loading → callers show skeletons. */
-export function useTransactions(): Transaction[] | undefined {
+export function useTransactions(requestedRange?: DateRange): Transaction[] | undefined {
   const { month, dateFrom, dateTo } = useUIStore();
   const userId = useDataStore((s) => s.userId);
   const booted = useDataStore((s) => s.booted);
   const ranges = useDataStore((s) => s.ranges);
   const pendingOps = useDataStore((s) => s.pendingOps);
-  const range = effectiveRange(month, dateFrom, dateTo);
+  const range = requestedRange ?? effectiveRange(month, dateFrom, dateTo);
   const key = `${range.from}:${range.to}`;
 
   useEffect(() => {
@@ -103,12 +105,19 @@ export function useTransactions(): Transaction[] | undefined {
   }, [userId, booted, key]);
 
   const rows = ranges[key];
-  if (rows === undefined) return undefined;
-  const pendingTxs = pendingOps
-    .filter((op) => op.op.kind === "expense.upsert" && inRange(op.op.tx.date, range))
-    .map((op) => (op.op.kind === "expense.upsert" ? op.op.tx : null))
-    .filter((tx): tx is Transaction => tx !== null && !rows.some((r) => r.id === tx.id));
-  return [...rows, ...pendingTxs];
+  return useMemo(() => {
+    if (rows === undefined) return undefined;
+    const pendingTxs = pendingOps
+      .filter((op) => op.op.kind === "expense.upsert" && inRange(op.op.tx.date, range))
+      .map((op) => (op.op.kind === "expense.upsert" ? op.op.tx : null))
+      .filter((tx): tx is Transaction => tx !== null && !rows.some((r) => r.id === tx.id));
+    return pendingTxs.length ? [...rows, ...pendingTxs] : rows;
+  }, [rows, pendingOps, key]);
+}
+
+/** Full history is loaded only on People, Wallet and Reports; balances span months. */
+export function useLedger(): Transaction[] | undefined {
+  return useTransactions({ from: "1900-01-01", to: "9998-12-31" });
 }
 
 export function useCategories(): Category[] {
@@ -178,6 +187,13 @@ export async function bootUserData(userId: string): Promise<void> {
     return;
   }
 
+  // Settings are independent of ledger writes; don't block the first data fetch.
+  void repo.getSettings().then(s => {
+    if (get().userId !== userId) return;
+    if (s.theme) useUIStore.getState().setThemeLocal(s.theme);
+    if (s.currency) useUIStore.getState().setCurrencyLocal(s.currency);
+  }).catch(() => undefined);
+
   // Replay writes queued by previous offline sessions before first fetch.
   const flush = await flushQueue(userId);
   if (flush.synced > 0) pushToast({ kind: "success", message: `Synced ${flush.synced} offline change${flush.synced === 1 ? "" : "s"}` });
@@ -189,16 +205,14 @@ export async function bootUserData(userId: string): Promise<void> {
     });
   }
 
-  // Cloud settings win over the local cache (cross-device consistency).
-  try {
-    const s = await repo.getSettings();
-    if (s.theme) useUIStore.getState().setThemeLocal(s.theme);
-    if (s.currency) useUIStore.getState().setCurrencyLocal(s.currency);
-  } catch { /* non-fatal */ }
-
-  await repo.ensureDefaults();
+  if (get().userId !== userId) return;
+  void loadRange(currentRange());
   const [categories, recurrings, pendingOps] = await Promise.all([
-    repo.getCategories(),
+    repo.getCategories().then(async cats => {
+      if (cats.length) return cats;
+      await repo.ensureDefaults();
+      return repo.getCategories();
+    }),
     repo.getRecurrings(),
     loadPendingOps(userId),
   ]).catch((e) => {
@@ -209,6 +223,7 @@ export async function bootUserData(userId: string): Promise<void> {
     });
     return [undefined, undefined, []] as const;
   });
+  if (get().userId !== userId) return;
   set({ categories, recurrings, pendingOps: pendingOps as PendingWrite[], booted: true });
 
   subscribeRealtime(userId);
@@ -218,6 +233,7 @@ export async function bootUserData(userId: string): Promise<void> {
 }
 
 export function resetDataStore(): void {
+  rangeRequests.clear();
   bootedFor = null;
   unsubscribeRealtime();
   window.removeEventListener("online", handleOnline);
@@ -370,11 +386,11 @@ interface WriteOpts {
  *   - offline/network error: keep op queued, sync later (toast: saved offline)
  *   - other error: ROLL BACK the optimistic change + toast with Retry
  */
-async function runWrite(op: QueuedOp, opts: WriteOpts): Promise<void> {
+async function runWrite(op: QueuedOp, opts: WriteOpts): Promise<boolean> {
   const userId = get().userId;
   let queuedId = "";
-  if (cloudEnabled && userId) queuedId = await enqueueOp(userId, op);
   try {
+    if (cloudEnabled && userId) queuedId = await enqueueOp(userId, op);
     await applyOp(op);
     if (queuedId) {
       await removeQueuedOp(queuedId);
@@ -387,7 +403,7 @@ async function runWrite(op: QueuedOp, opts: WriteOpts): Promise<void> {
     if (isNetworkError(e)) {
       pushToast({ kind: "info", message: `${opts.label} saved offline — will sync when you're back online` });
       await reloadPendingOps();
-      return;
+      return true;
     }
     // Hard error: the optimistic change is rolled back AND the queued op is
     // dropped (Retry re-enqueues it) so one poison write can't haunt the queue.
@@ -400,9 +416,11 @@ async function runWrite(op: QueuedOp, opts: WriteOpts): Promise<void> {
     pushToast({
       kind: "error",
       message: `Couldn't save ${opts.label} — ${message}`,
-      action: { label: "Retry", run: () => void runWrite(op, opts) },
+      action: { label: "Retry", run: () => { void runWrite(op, opts).then(saved => { if (saved) void refreshAllData(); }); } },
     });
+    return false;
   }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -430,9 +448,11 @@ export async function saveExpense(input: {
   date: string;
   time: string;
   recurringId?: string;
+  finance?: Transaction["finance"];
 }): Promise<Transaction | null> {
   try {
     validateExpenseInput(input);
+    validateFinance(input.amount, input.finance);
   } catch (e) {
     pushToast({ kind: "error", message: e instanceof Error ? e.message : "Invalid expense" });
     return null;
@@ -446,17 +466,21 @@ export async function saveExpense(input: {
     time: input.time,
     createdAt: Date.now(),
     recurringId: input.recurringId,
+    finance: input.finance,
   };
   const existing = findTxAnywhere(tx.id);
   applyUpsertLocal(tx);
-  await runWrite({ kind: "expense.upsert", tx }, {
+  const saved = await runWrite({ kind: "expense.upsert", tx }, {
     rollback: () => (existing ? applyUpsertLocal(existing) : applyRemoveLocal(tx.id)),
     label: "expense",
   });
-  return tx;
+  return saved ? tx : null;
 }
 
 export async function updateExpense(id: string, patch: ExpensePatch): Promise<void> {
+  const current = findTxAnywhere(id);
+  try { if (current) validateFinance(patch.amount ?? current.amount, patch.finance ?? current.finance); }
+  catch (e) { pushToast({ kind: "error", message: e instanceof Error ? e.message : "Invalid entry" }); return; }
   const resolved: ExpensePatch = {
     ...patch,
     ...(patch.categoryId !== undefined ? { categoryId: resolveCategoryId(patch.categoryId) } : {}),
@@ -646,27 +670,37 @@ export async function pushSettingsUpdate(patch: SettingsPatch): Promise<void> {
 
 export async function loadRange(range: DateRange, opts: { force?: boolean } = {}): Promise<void> {
   const key = `${range.from}:${range.to}`;
+  const userId = get().userId;
+  const requestKey = `${userId}:${key}`;
   if (!opts.force && get().ranges[key]) return;
-  set((s) => ({ loadingRange: s.ranges[key] ? s.loadingRange : key }));
-  try {
-    const rows = await repo.getExpenses(range);
-    set((s) => ({ ranges: { ...s.ranges, [key]: rows }, loadingRange: null }));
-  } catch (e) {
-    set({ loadingRange: null });
-    if (isNetworkError(e)) {
-      pushToast({
-        kind: "error",
-        message: "You're offline — showing cached data",
-        action: { label: "Retry", run: () => void loadRange(range, { force: true }) },
-      });
-    } else {
-      pushToast({
-        kind: "error",
-        message: `Couldn't load expenses — ${e instanceof Error ? e.message : "error"}`,
-        action: { label: "Retry", run: () => void loadRange(range, { force: true }) },
-      });
+  const pendingRequest = rangeRequests.get(requestKey);
+  if (pendingRequest) return pendingRequest;
+  const request = (async () => {
+    set((s) => ({ loadingRange: s.ranges[key] ? s.loadingRange : key }));
+    try {
+      const rows = await repo.getExpenses(range);
+      if (get().userId !== userId) return;
+      set((s) => ({ ranges: { ...s.ranges, [key]: rows }, loadingRange: null }));
+    } catch (e) {
+      if (get().userId !== userId) return;
+      set({ loadingRange: null });
+      if (isNetworkError(e)) {
+        pushToast({
+          kind: "error",
+          message: "You're offline — showing cached data",
+          action: { label: "Retry", run: () => void loadRange(range, { force: true }) },
+        });
+      } else {
+        pushToast({
+          kind: "error",
+          message: `Couldn't load expenses — ${e instanceof Error ? e.message : "error"}`,
+          action: { label: "Retry", run: () => void loadRange(range, { force: true }) },
+        });
+      }
     }
-  }
+  })();
+  rangeRequests.set(requestKey, request);
+  try { await request; } finally { if (rangeRequests.get(requestKey) === request) rangeRequests.delete(requestKey); }
 }
 
 export async function refreshCurrentRange(force = true): Promise<void> {
@@ -678,6 +712,7 @@ export async function refreshAllData(): Promise<void> {
   if (!get().userId || !get().booted) return;
   const [categories, recurrings] = await Promise.all([repo.getCategories(), repo.getRecurrings()]);
   set({ categories, recurrings, budgets: {} });
+  set({ ranges: {} });
   await refreshCurrentRange(true);
 }
 

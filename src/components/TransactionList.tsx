@@ -8,6 +8,7 @@ import { formatAmount, formatTime } from "../utils/format";
 import { useHaptics } from "../hooks/useHaptics";
 import { useStore } from "../store/store";
 import { SkeletonRows } from "./Skeletons";
+import { PAYMENT_LABELS } from "../utils/finance";
 
 const LONG_PRESS_MS = 500;
 const VIRTUALIZE_OVER = 100;
@@ -348,7 +349,7 @@ const Row = memo(function Row({ t, cat, currency, search, selectionMode, selecte
           <span className="block truncate text-[15px] font-semibold">
             <Highlight text={t.note || cat?.name || "Expense"} query={search} />
           </span>
-          <span className="block text-xs text-slate-400 dark:text-slate-500">{formatTime(t.time)}</span>
+          <span className="block text-xs text-slate-500">{formatTime(t.time)} · {PAYMENT_LABELS[t.finance?.paymentMethod ?? "unknown"]}{t.finance?.paymentMethod === "credit" && t.finance.cardName ? ` · ${t.finance.cardName}` : ""}</span>
         </span>
         <span className="shrink-0 text-[15px] font-bold tabular-nums">{formatAmount(t.amount, currency)}</span>
       </div>

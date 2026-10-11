@@ -21,6 +21,21 @@ export interface Transaction {
   time: string; // "HH:mm" (local)
   createdAt: number; // epoch ms
   recurringId?: string;
+  finance?: FinanceDetails;
+}
+
+export type PaymentMethod = "upi" | "cash" | "debit" | "credit" | "bank" | "unknown";
+export interface SplitShare { id: string; name: string; amount: number; isMe?: boolean }
+export interface FinanceDetails {
+  kind: "expense" | "lent" | "borrowed" | "split" | "settlement" | "card_payment";
+  paymentMethod: PaymentMethod;
+  cardName?: string;
+  person?: string;
+  dueDate?: string;
+  shares?: SplitShare[];
+  settlesId?: string;
+  settlesShareId?: string;
+  direction?: "in" | "out";
 }
 
 export interface Budget {
@@ -263,6 +278,7 @@ export interface ExpenseRow {
   spent_at: string;
   created_at: string;
   updated_at: string;
+  finance?: FinanceDetails | null;
 }
 
 export interface CategoryRow {
@@ -311,6 +327,7 @@ export function expenseToRow(t: Transaction): Omit<ExpenseRow, "user_id" | "upda
     recurring_id: t.recurringId ?? null,
     spent_at: dateTimeToISO(t.date, t.time),
     created_at: new Date(t.createdAt).toISOString(),
+    ...(t.finance ? { finance: t.finance } : {}),
   };
 }
 
@@ -324,11 +341,13 @@ export function rowToExpense(row: ExpenseRow): Transaction {
     time: isoToTime(row.spent_at),
     createdAt: Date.parse(row.created_at),
     recurringId: row.recurring_id ?? undefined,
+    ...(row.finance ? { finance: row.finance } : {}),
   };
 }
 
 export function patchToExpenseRow(patch: ExpensePatch): Partial<ExpenseRow> {
   const row: Partial<ExpenseRow> = {};
+  if (patch.finance !== undefined) row.finance = patch.finance;
   if (patch.amount !== undefined) {
     validateExpenseInput({ amount: patch.amount });
     row.amount = patch.amount;

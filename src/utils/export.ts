@@ -1,4 +1,6 @@
 import type { Backup } from "../db/db";
+import type { Transaction } from "../db/types";
+import { personalAmount, PAYMENT_LABELS } from "./finance";
 
 function download(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -13,14 +15,14 @@ function download(filename: string, content: string, mime: string) {
 }
 
 export function exportCSV(
-  txs: { id: string; amount: number; note: string; categoryId: string; date: string; time: string }[],
+  txs: Transaction[],
   categoryName: (id: string) => string,
 ) {
   const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
   const rows = [
-    ["Date", "Time", "Note", "Category", "Amount"].join(","),
+    ["Date", "Time", "Note", "Category", "Amount", "Personal expense", "Type", "Payment method", "Card", "Person"].join(","),
     ...txs.map((t) =>
-      [t.date, t.time, esc(t.note || ""), esc(categoryName(t.categoryId)), String(t.amount)].join(","),
+      [t.date, t.time, esc(t.note || ""), esc(categoryName(t.categoryId)), String(t.amount), String(personalAmount(t)), t.finance?.kind ?? "expense", esc(PAYMENT_LABELS[t.finance?.paymentMethod ?? "unknown"]), esc(t.finance?.cardName ?? ""), esc(t.finance?.person ?? "")].join(","),
     ),
   ];
   download(`expenses-${new Date().toISOString().slice(0, 10)}.csv`, rows.join("\n"), "text/csv");

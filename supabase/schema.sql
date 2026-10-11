@@ -20,6 +20,18 @@ create table if not exists public.categories (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.recurring_expenses (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  amount       numeric(12,2) not null check (amount > 0),
+  note         text, -- the recurring's display name (e.g. "Monthly rent")
+  category_id  uuid references public.categories (id) on delete set null,
+  day_of_month int not null check (day_of_month between 1 and 28),
+  active       boolean not null default true,
+  last_run     date, -- first day of the last month the rule was auto-applied
+  created_at   timestamptz not null default now()
+);
+
 create table if not exists public.expenses (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -39,18 +51,6 @@ create table if not exists public.budgets (
   amount  numeric(12,2) not null check (amount >= 0),
   created_at timestamptz not null default now(),
   unique (user_id, month)
-);
-
-create table if not exists public.recurring_expenses (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  amount       numeric(12,2) not null check (amount > 0),
-  note         text, -- the recurring's display name (e.g. "Monthly rent")
-  category_id  uuid references public.categories (id) on delete set null,
-  day_of_month int not null check (day_of_month between 1 and 28),
-  active       boolean not null default true,
-  last_run     date, -- first day of the last month the rule was auto-applied
-  created_at   timestamptz not null default now()
 );
 
 create table if not exists public.settings (
@@ -142,3 +142,5 @@ begin
     alter publication supabase_realtime add table public.expenses;
   end if;
 end $$;
+
+-- Next run supabase/migrations/20261011_finance.sql for payment methods, splits and repayments.

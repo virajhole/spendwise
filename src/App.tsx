@@ -10,6 +10,8 @@ import { lazy, Suspense } from "react";
 const Stats = lazy(() => import("./pages/Stats"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const Login = lazy(() => import("./pages/Login"));
+const People = lazy(() => import("./pages/People"));
+const Wallet = lazy(() => import("./pages/Wallet"));
 
 /** Fixed "Offline, will sync" badge. */
 function OfflineBadge() {
@@ -78,6 +80,8 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/stats" element={<Stats />} />
+            <Route path="/people" element={<People />} />
+            <Route path="/wallet" element={<Wallet />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

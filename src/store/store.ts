@@ -103,7 +103,7 @@ export function applyTheme(mode: ThemeMode) {
   document.documentElement.classList.toggle("dark", dark);
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", dark ? "#0f1115" : "#0ea5a4");
+    ?.setAttribute("content", dark ? "#101b15" : "#009b72");
 }
 
 /** Runs once before mount: restores theme/currency (localStorage, with a

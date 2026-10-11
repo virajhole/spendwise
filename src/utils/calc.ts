@@ -1,8 +1,11 @@
 /** Pure calculation & grouping logic — unit tested. */
+import type { FinanceDetails } from "../db/types";
+import { personalAmount } from "./finance";
 
 export interface TxLike {
   amount: number;
   date: string; // "YYYY-MM-DD"
+  finance?: FinanceDetails;
 }
 
 export function round2(n: number): number {
@@ -11,7 +14,7 @@ export function round2(n: number): number {
 
 /** Total of transaction amounts. */
 export function totalExpense(txs: TxLike[]): number {
-  return round2(txs.reduce((s, t) => s + t.amount, 0));
+  return round2(txs.reduce((s, t) => s + personalAmount(t), 0));
 }
 
 /** Remaining = budget - total (negative means over budget). */
@@ -98,7 +101,7 @@ export function dailySpend(txs: TxLike[], month: string): { day: number; amount:
   const out = Array.from({ length: days }, (_, i) => ({ day: i + 1, amount: 0 }));
   for (const t of inMonth(txs, month)) {
     const day = Number(t.date.slice(8, 10));
-    if (day >= 1 && day <= days) out[day - 1].amount = round2(out[day - 1].amount + t.amount);
+    if (day >= 1 && day <= days) out[day - 1].amount = round2(out[day - 1].amount + personalAmount(t));
   }
   return out;
 }
@@ -106,7 +109,7 @@ export function dailySpend(txs: TxLike[], month: string): { day: number; amount:
 /** Category totals, sorted desc. */
 export function byCategory(txs: (TxLike & { categoryId: string })[]): { categoryId: string; amount: number }[] {
   const map = new Map<string, number>();
-  for (const t of txs) map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + t.amount);
+  for (const t of txs) if (personalAmount(t) > 0) map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + personalAmount(t));
   return [...map.entries()]
     .map(([categoryId, amount]) => ({ categoryId, amount: round2(amount) }))
     .sort((a, b) => b.amount - a.amount);

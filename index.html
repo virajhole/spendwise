@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
-    <meta name="theme-color" content="#0ea5a4" />
+    <meta name="theme-color" content="#009b72" />
     <meta name="description" content="A minimal expense tracker that syncs across your devices" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -19,7 +19,7 @@
         var dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
         if (dark) document.documentElement.classList.add("dark");
         var mc = document.querySelector('meta[name="theme-color"]');
-        if (mc) mc.setAttribute("content", dark ? "#0f1115" : "#0ea5a4");
+        if (mc) mc.setAttribute("content", dark ? "#101b15" : "#009b72");
       } catch (e) {}
     </script>
   </head>

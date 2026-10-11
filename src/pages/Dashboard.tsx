@@ -4,7 +4,11 @@ import SummaryCard, { SlimSummary } from "../components/SummaryCard";
 import AlertBanner from "../components/AlertBanner";
 import SearchBar from "../components/SearchBar";
 import TransactionList from "../components/TransactionList";
-import InputPad from "../components/InputPad";
+import QuickEntry from "../components/QuickEntry";
+import { Link } from "react-router-dom";
+import { Users, Wallet, ArrowUpRight } from "lucide-react";
+import { personalAmount } from "../utils/finance";
+import { formatAmount } from "../utils/format";
 import EditDialog from "../components/EditDialog";
 import type { Transaction } from "../db/types";
 import { useStore } from "../store/store";
@@ -14,13 +18,12 @@ import {
   useTransactions,
   deleteExpense,
   restoreExpense,
-  saveExpense,
   setBudget,
   updateExpense,
 } from "../store/data";
 import { budgetUsedPct, remainingBalance } from "../utils/calc";
 import { filterTransactions } from "../utils/filters";
-import { currentTime, todayISO } from "../utils/format";
+import { monthEndDate } from "../db/types";
 
 /**
  * Home screen for a 360x780 phone.
@@ -29,10 +32,11 @@ import { currentTime, todayISO } from "../utils/format";
  */
 export default function Dashboard() {
   const {
-    month, currency, collapsed, setCollapsed, editing, setEditing,
+    month, currency, editing, setEditing,
     search, filterCategory, dateFrom, dateTo, minAmount, maxAmount,
   } = useStore();
   const transactions = useTransactions();
+  const monthlyTransactions = useTransactions({ from: `${month}-01`, to: monthEndDate(month) });
   const categories = useCategories();
   const budget = useBudget(month);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -40,10 +44,7 @@ export default function Dashboard() {
   const [compact, setCompact] = useState(false);
 
   // Summary is computed from ALL of the month's expenses (not the filtered set).
-  const monthTxs = useMemo(
-    () => (transactions === undefined ? undefined : transactions.filter((t) => t.date.startsWith(month))),
-    [transactions, month],
-  );
+  const monthTxs = monthlyTransactions;
   const b = budget ?? 0;
   const pct = budgetUsedPct(b, monthTxs ?? []);
   const over = b > 0 && remainingBalance(b, monthTxs ?? []) < 0;
@@ -51,26 +52,16 @@ export default function Dashboard() {
   // Search + filters (applied once, shared by the list and the result counter).
   const filtered = useMemo(
     () =>
-      filterTransactions(transactions ?? [], { search, filterCategory, dateFrom, dateTo, minAmount, maxAmount }),
+      filterTransactions((transactions ?? []).filter(t => !t.finance || t.finance.kind === "expense"), { search, filterCategory, dateFrom, dateTo, minAmount, maxAmount }),
     [transactions, search, filterCategory, dateFrom, dateTo, minAmount, maxAmount],
   );
   const filteredTotal = useMemo(() => filtered.reduce((s, t) => s + t.amount, 0), [filtered]);
-  const filteredMonthTxs = useMemo(() => filtered.filter((t) => t.date.startsWith(month)), [filtered, month]);
-  const listPct = budgetUsedPct(b, filteredMonthTxs);
-  const listRemaining = remainingBalance(b, filteredMonthTxs);
-
   // Collapse the big summary into the slim sticky bar on scroll.
   const onScroll = () => {
     const summaryH = summaryRef.current?.offsetHeight ?? 0;
     setCompact((scrollRef.current?.scrollTop ?? 0) > Math.max(0, summaryH - 40));
   };
 
-  const handleSubmit = useCallback(
-    async (input: { amount: number; note: string; categoryId: string }) => {
-      await saveExpense({ ...input, date: todayISO(), time: currentTime() });
-    },
-    [],
-  );
   const handleDelete = useCallback(async (t: { id: string }) => {
     await deleteExpense(t.id);
   }, []);
@@ -90,22 +81,29 @@ export default function Dashboard() {
         {/* One opaque sticky block: search bar + slim remaining bar */}
         <div className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100 shadow-sm dark:border-slate-800 dark:bg-[#0f1115]">
           <SearchBar categories={categories} count={filtered.length} total={filteredTotal} currency={currency} />
-          <SlimSummary remaining={listRemaining} pct={listPct} currency={currency} visible={compact} />
+          <SlimSummary remaining={remainingBalance(b, monthTxs ?? [])} pct={pct} currency={currency} visible={compact} />
         </div>
 
         <div ref={summaryRef}>
           <SummaryCard
             month={month}
             budget={budget}
-            transactions={transactions}
+            transactions={monthlyTransactions}
             currency={currency}
             onSetBudget={(amount) => void setBudget(month, amount)}
           />
         </div>
         <AlertBanner pct={pct} over={over} />
 
+        <div className="grid grid-cols-2 gap-3 px-4 mt-4">
+          <Link to="/people" className="shortcut-card"><Users size={20} /><span>Split & udhaar<small>Keep friends settled</small></span><ArrowUpRight size={15} /></Link>
+          <Link to="/wallet" className="shortcut-card"><Wallet size={20} /><span>Your wallet<small>UPI, cash & cards</small></span><ArrowUpRight size={15} /></Link>
+        </div>
+        {!!transactions?.some(t => t.finance?.kind === "split") && <Link to="/people" className="surface mx-4 mt-4 flex justify-between gap-3 p-4 text-sm"><span>Your share of split bills</span><strong>{formatAmount(transactions.filter(t => t.finance?.kind === "split").reduce((s,t) => s + personalAmount(t), 0), currency)}</strong></Link>}
+        <div className="section-heading px-4 mt-6 mb-1"><h2>Recent expenses</h2><span>Tap to edit</span></div>
+
         <TransactionList
-          transactions={filtered}
+          transactions={transactions === undefined ? undefined : filtered}
           categories={categories}
           currency={currency}
           search={search}
@@ -116,13 +114,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <InputPad
-        categories={categories}
-        currency={currency}
-        collapsed={collapsed}
-        onSetCollapsed={setCollapsed}
-        onSubmit={handleSubmit}
-      />
+      <QuickEntry />
 
       <EditDialog
         tx={editing}

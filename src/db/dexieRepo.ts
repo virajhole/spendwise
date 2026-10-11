@@ -1,6 +1,5 @@
 import { db } from "./db";
 import {
-  inRange,
   uid,
   validateExpenseInput,
   DEFAULT_CATEGORIES,
@@ -15,6 +14,7 @@ import {
   type Transaction,
 } from "./types";
 import { shiftMonth } from "../utils/calc";
+import { validateLedgerWrite } from "../utils/finance";
 
 /**
  * Repository backed by IndexedDB (Dexie) — used when Supabase env vars are
@@ -26,8 +26,7 @@ export function createDexieRepository(): DataRepository {
     kind: "local",
 
     async getExpenses(range: DateRange): Promise<Transaction[]> {
-      const all = await db.transactions.toArray();
-      return all.filter((t) => inRange(t.date, range));
+      return db.transactions.where("date").between(range.from, range.to, true, true).toArray();
     },
 
     async getAllExpenses(): Promise<Transaction[]> {
@@ -36,16 +35,32 @@ export function createDexieRepository(): DataRepository {
 
     async addExpense(t: Transaction): Promise<void> {
       validateExpenseInput(t);
-      await db.transactions.put(t);
+      await db.transaction("rw", db.transactions, async () => {
+        const previous = await db.transactions.get(t.id);
+        // New ordinary expenses need no full-ledger read. Repayments and
+        // replacements need the history to enforce outstanding balances.
+        const needsHistory = previous || t.finance?.kind === "settlement";
+        validateLedgerWrite(t, needsHistory ? await db.transactions.toArray() : []);
+        await db.transactions.put(t);
+      });
     },
 
     async updateExpense(id: string, patch: Partial<Omit<Transaction, "id">>): Promise<void> {
       if (patch.amount !== undefined) validateExpenseInput({ amount: patch.amount });
-      await db.transactions.update(id, patch);
+      await db.transaction("rw", db.transactions, async () => {
+        const current = await db.transactions.get(id);
+        if (!current) throw new Error("Expense not found");
+        const next = { ...current, ...patch };
+        validateLedgerWrite(next, await db.transactions.toArray());
+        await db.transactions.put(next);
+      });
     },
 
     async deleteExpense(id: string): Promise<void> {
-      await db.transactions.delete(id);
+      await db.transaction("rw", db.transactions, async () => {
+        await db.transactions.filter(t => t.finance?.settlesId === id).delete();
+        await db.transactions.delete(id);
+      });
     },
 
     async getBudget(month: string): Promise<number | undefined> {
@@ -126,7 +141,12 @@ export function createDexieRepository(): DataRepository {
     async importAll(data: Backup): Promise<number> {
       if (!data || !Array.isArray(data.transactions)) throw new Error("Invalid backup file");
       await db.transaction("rw", [db.transactions, db.budgets, db.recurrings, db.settings, db.categories], async () => {
-        await db.transactions.bulkPut(data.transactions);
+        const incoming = [...data.transactions].sort((a, b) => Number(a.finance?.kind === "settlement") - Number(b.finance?.kind === "settlement"));
+        for (const t of incoming) {
+          validateExpenseInput(t);
+          validateLedgerWrite(t, await db.transactions.toArray());
+          await db.transactions.put(t);
+        }
         if (data.budgets) await db.budgets.bulkPut(data.budgets);
         if (data.recurrings) await db.recurrings.bulkPut(data.recurrings);
         if (data.settings) await db.settings.bulkPut(data.settings);

@@ -2,39 +2,34 @@ import { test, expect } from "@playwright/test";
 import { addExpense, expectTotals, waitForApp } from "./helpers";
 
 test.describe("Add expense", () => {
-  test.beforeEach(async ({ page }) => {
-    await waitForApp(page);
-  });
-
-  test("adds an expense with amount, note and category; totals update instantly", async ({ page }) => {
+  test.beforeEach(async ({ page }) => { await waitForApp(page); });
+  test("adds an expense with amount, note and category", async ({ page }) => {
     await addExpense(page, "1250", "Chai", "Food");
-    await expect(page.getByText("Chai")).toBeVisible();
-    await expectTotals(page, "₹1,250", "-₹1,250"); // no budget set yet
-  });
-
-  test("rejects an empty amount (error state, nothing saved)", async ({ page }) => {
-    await page.getByRole("button", { name: /tap to open keypad/i }).click();
-    await page.getByRole("group", { name: "Keypad" }).getByRole("button", { name: "Add expense" }).click();
-    await expect(page.getByRole("button", { name: /amount ₹0/i })).toHaveClass(/bg-red-500/);
-  });
-
-  test("rejects a leading zero as the only digit (0 is not a valid expense)", async ({ page }) => {
-    await addExpense(page, "0", "nothing");
-    await expect(page.getByRole("button", { name: /amount ₹0/i })).toHaveClass(/bg-red-500/);
-    await expect(page.getByText("nothing")).toHaveCount(0);
-  });
-
-  test("keeps the pad clean after adding", async ({ page }) => {
-    await addExpense(page, "1250", "Chai");
-    await expect(page.getByRole("button", { name: /amount ₹0/i })).toBeVisible();
-    await expect(page.getByLabel("Note")).toHaveValue("");
-  });
-
-  test("persists after reload", async ({ page }) => {
-    await addExpense(page, "1250", "Chai");
-    await page.reload();
-    await waitForApp(page);
-    await expect(page.getByText("Chai")).toBeVisible();
+    await expect(page.getByText("Chai", { exact: true })).toBeVisible();
     await expectTotals(page, "₹1,250", "-₹1,250");
+  });
+  test("rejects an empty or zero amount", async ({ page }) => {
+    await page.getByRole("button", { name: "Add details" }).click();
+    const sheet = page.getByRole("dialog");
+    await sheet.getByRole("button", { name: "Save expense" }).click();
+    await expect(sheet).toBeVisible();
+    await sheet.getByLabel(/Amount/).fill("0");
+    await sheet.getByRole("button", { name: "Save expense" }).click();
+    await expect(sheet).toBeVisible();
+    expect(await sheet.getByLabel(/Amount/).evaluate((e: HTMLInputElement) => e.validity.valid)).toBe(false);
+  });
+  test("chat entry categorizes chai and persists after reload", async ({ page }) => {
+    await page.getByLabel("Quick expense").fill("chai 15rs upi");
+    await page.getByRole("button", { name: "Send expense" }).click();
+    await expect(page.getByLabel("Quick expense")).toHaveValue("");
+    await expectTotals(page, "₹15", "-₹15");
+    await page.reload();
+    await expect(page.getByRole("button", { name: /Edit chai,/ })).toBeVisible();
+    await expectTotals(page, "₹15", "-₹15");
+  });
+  test("ambiguous chat does not create an expense", async ({ page }) => {
+    await page.getByLabel("Quick expense").fill("chai 15 20");
+    await page.getByRole("button", { name: "Send expense" }).click();
+    await expect(page.getByRole("alert")).toContainText("Use one amount");
   });
 });

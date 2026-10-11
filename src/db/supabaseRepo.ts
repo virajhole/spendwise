@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { validateFinance } from "../utils/finance";
 import {
   addDays,
   budgetToRow,
@@ -71,6 +72,7 @@ export async function applyQueuedOp(client: SupabaseClient, op: QueuedOp): Promi
   switch (op.kind) {
     case "expense.upsert": {
       validateExpenseInput(op.tx);
+      validateFinance(op.tx.amount, op.tx.finance);
       const res = await client.from("expenses").upsert(expenseToRow(op.tx));
       throwIfError(res);
       return;
@@ -147,7 +149,9 @@ export async function applyQueuedOp(client: SupabaseClient, op: QueuedOp): Promi
  */
 export function createSupabaseRepository(client: SupabaseClient): DataRepository {
   async function upsertExpenses(txs: Transaction[]): Promise<void> {
-    for (const part of chunk(txs, CHUNK)) {
+    txs.forEach(t => { validateExpenseInput(t); validateFinance(t.amount, t.finance); });
+    const ordered = [...txs].sort((a,b) => Number(a.finance?.kind === "settlement") - Number(b.finance?.kind === "settlement"));
+    for (const part of chunk(ordered, CHUNK)) {
       const res = await client.from("expenses").upsert(part.map(expenseToRow));
       throwIfError(res);
     }
@@ -158,14 +162,21 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
 
     // ---------------------------------------------------------- expenses
     async getExpenses(range: DateRange): Promise<Transaction[]> {
-      const res = await client
-        .from("expenses")
-        .select("*")
-        .gte("spent_at", dayStartISO(range.from))
-        .lt("spent_at", dayStartISO(addDays(range.to, 1)))
-        .order("spent_at", { ascending: false });
-      throwIfError(res);
-      return ((res.data ?? []) as ExpenseRow[]).map(rowToExpense);
+      const rows: Transaction[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const res = await client
+          .from("expenses")
+          .select("*")
+          .gte("spent_at", dayStartISO(range.from))
+          .lt("spent_at", dayStartISO(addDays(range.to, 1)))
+          .order("spent_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, from + PAGE - 1);
+        throwIfError(res);
+        const page = (res.data ?? []) as ExpenseRow[];
+        rows.push(...page.map(rowToExpense));
+        if (page.length < PAGE) return rows;
+      }
     },
 
     async getAllExpenses(): Promise<Transaction[]> {
@@ -365,6 +376,7 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
         id: isUuid(t.id) ? t.id : uuidFromSeed(`exp:${userId}:${t.id}`),
         categoryId: t.categoryId ? (catMap.get(t.categoryId) ?? "") : "",
         recurringId: t.recurringId ? recMap.get(t.recurringId) : undefined,
+        finance: t.finance?.settlesId ? { ...t.finance, settlesId: isUuid(t.finance.settlesId) ? t.finance.settlesId : uuidFromSeed(`exp:${userId}:${t.finance.settlesId}`) } : t.finance,
       }));
       await upsertExpenses(txs);
 

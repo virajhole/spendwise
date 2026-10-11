@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Trash2, X } from "lucide-react";
 import { NOTE_MAX_LENGTH, type Category, type Transaction } from "../db/types";
+import type { FinanceDetails } from "../db/types";
+import PaymentFields from "./PaymentFields";
+import { validateFinance } from "../utils/finance";
 
 interface Props {
   tx: Transaction | null;
@@ -24,6 +27,8 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
   const [date, setDate] = useState(tx?.date ?? "");
   const [time, setTime] = useState(tx?.time ?? "");
   const [key, setKey] = useState(tx?.id ?? "");
+  const [finance, setFinance] = useState<FinanceDetails>(tx?.finance ?? { kind: "expense", paymentMethod: "unknown" });
+  const [error, setError] = useState("");
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -37,6 +42,8 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
     setCategoryId(tx.categoryId);
     setDate(tx.date);
     setTime(tx.time);
+    setFinance(tx.finance ?? { kind: "expense", paymentMethod: "unknown" });
+    setError("");
   }
 
   const open = tx !== null;
@@ -147,6 +154,8 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
                 ))}
               </div>
 
+              <div className="mt-4"><PaymentFields value={finance} onChange={setFinance} /></div>
+              {error && <p role="alert" className="text-sm text-red-500 mt-2">{error}</p>}
               <div className="mt-3 flex gap-2">
                 <div className="flex-1">
                   <label htmlFor="edit-date" className="block text-xs font-semibold uppercase tracking-wide text-slate-400">Date</label>
@@ -194,12 +203,14 @@ export default function EditDialog({ tx, categories, onClose, onSave, onDelete }
               <button
                 onClick={() => {
                   const amt = Number(amount);
+                  try { validateFinance(amt > 0 ? amt : tx.amount, finance); } catch (e) { setError(e instanceof Error ? e.message : "Invalid entry"); return; }
                   onSave({
                     amount: amt > 0 ? amt : tx.amount,
                     note: note.trim(),
                     categoryId,
                     date,
                     time,
+                    finance,
                   });
                   onClose();
                 }}

@@ -59,7 +59,7 @@ Components only ever call the repository/store layer — never Supabase directly
 ## 1. Create the Supabase project
 
 1. Go to [supabase.com](https://supabase.com) → **New project** (any name, e.g. `spendwise`; pick a region near you and a strong DB password).
-2. When it's ready, open **SQL Editor → New query**, paste the entire contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. This creates the tables (`categories`, `expenses`, `budgets`, `recurring_expenses`, `settings`), indexes, the `updated_at` trigger, Row Level Security policies (each user can only see/touch their own rows) and enables Realtime on `expenses`.
+2. When it's ready, open **SQL Editor → New query**, paste the entire contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. Then run [`supabase/migrations/20261011_finance.sql`](supabase/migrations/20261011_finance.sql). Existing installations only need the finance migration. It adds payment methods and ledger metadata with server validation; existing expenses keep their original amounts and an unrecorded payment method.
 3. Go to **Project Settings → API** and copy two values:
    - **Project URL** → `VITE_SUPABASE_URL`
    - **anon public key** → `VITE_SUPABASE_ANON_KEY`
