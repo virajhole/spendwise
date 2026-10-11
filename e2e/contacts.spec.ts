@@ -1,0 +1,47 @@
+import { test, expect } from "@playwright/test";
+import { waitForApp } from "./helpers";
+test("contact combines loans, split shares and editable repayments", async ({ page }) => {
+  await waitForApp(page);
+  for (const text of ["Arbaz ko 500 diye udhaar", "mujhe Arbaz ko 300 dene hain", "Arbaz take 400 dinner SBI cc"]) {
+    await page.getByLabel("Quick expense").fill(text);
+    await page.getByRole("button", { name: "Send expense" }).click();
+    await expect(page.getByLabel("Quick expense")).toHaveValue("");
+  }
+  await page.getByRole("navigation").getByRole("link", { name: "People", exact: true }).click();
+  await page.getByRole("button", { name: "Contacts", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Open contact Arbaz" })).toContainText("₹600");
+  await page.getByRole("button", { name: "Open contact Arbaz" }).click();
+  const contact = page.getByRole("region", { name: "Contact Arbaz", exact: true });
+  await expect(contact.locator("article")).toHaveCount(3);
+  await expect(contact).toContainText("To receive ₹900 · To pay ₹300");
+  const loan = contact.locator("article").filter({ has: page.getByRole("button", { name: /Edit You lent/ }) });
+  await loan.getByRole("button", { name: "Record payment" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel(/Amount/).fill("100");
+  await dialog.getByRole("button", { name: "Record payment" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(contact).toContainText("To receive ₹800 · To pay ₹300");
+  await contact.getByRole("button", { name: /Edit Repayment received/ }).click();
+  await dialog.getByLabel(/Amount/).fill("150");
+  await dialog.getByRole("button", { name: "Save changes" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(contact).toContainText("To receive ₹750 · To pay ₹300");
+  await contact.getByText("Filter by date or type", { exact: true }).click();
+  await contact.getByLabel("Transaction type").selectOption("split");
+  await expect(contact.locator("article")).toHaveCount(1);
+  await expect(contact.locator("article")).toContainText("SBI");
+  await contact.getByRole("button", { name: "Payments", exact: true }).click();
+  await expect(contact.locator("article")).toHaveCount(1);
+  await expect(contact.locator("article")).toContainText("₹150");
+  await page.getByRole("navigation").getByRole("link", { name: "Reports", exact: true }).click();
+  const overview = page.locator("section").filter({ has: page.getByRole("heading", { name: "Who owes what" }) });
+  await expect(overview.getByRole("link", { name: /Arbaz/ })).toHaveCount(1);
+  await expect(overview.getByRole("link", { name: /Arbaz/ })).toContainText("₹450");
+  await overview.getByRole("link", { name: /Arbaz/ }).click();
+  await expect(contact).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 780 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.reload();
+  await page.getByRole("button", { name: "Contacts", exact: true }).click();
+  await expect(contact).toContainText("₹450");
+});

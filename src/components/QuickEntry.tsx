@@ -43,7 +43,7 @@ export default function QuickEntry() {
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-teal-700 dark:text-teal-400"><Sparkles size={13} /> A little chat. All your expenses.</div>
       <form className="flex items-center gap-2" onSubmit={e => { e.preventDefault(); void save(false); }}>
         <button className="icon-button shrink-0" type="button" aria-label="Add details" onClick={() => { setError(""); setOpen(true); }}><Plus size={22} /></button>
-        <input className="min-w-0 flex-1 bg-transparent py-3 outline-none" aria-label="Quick expense" placeholder="Try ‘chai 15 upi’" maxLength={200} value={text} onChange={e => { setText(e.target.value); setError(""); }} />
+        <input className="min-w-0 flex-1 bg-transparent py-3 outline-none" aria-label="Quick expense" placeholder="‘chai 15’ or ‘Rini take 300 dinner’" maxLength={200} value={text} onChange={e => { setText(e.target.value); setError(""); }} />
         <button className="send-button" aria-label="Send expense" disabled={busy || !text.trim()}><ArrowUp size={21} /></button>
       </form>
       {error && !open && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}

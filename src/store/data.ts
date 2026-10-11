@@ -440,6 +440,12 @@ function resolveCategoryId(categoryId: string): string {
   return cats.find((c) => c.name.toLowerCase() === categoryId.toLowerCase())?.id ?? "";
 }
 
+export async function saveContactSettlement(txs: Transaction[]): Promise<void> {
+  if (cloudEnabled && get().pendingOps.length) throw new Error("Let pending changes finish syncing before settling this contact");
+  await repo.settleContact(txs);
+  txs.forEach(applyUpsertLocal);
+}
+
 export async function saveExpense(input: {
   id?: string;
   amount: number;
@@ -477,10 +483,10 @@ export async function saveExpense(input: {
   return saved ? tx : null;
 }
 
-export async function updateExpense(id: string, patch: ExpensePatch): Promise<void> {
+export async function updateExpense(id: string, patch: ExpensePatch): Promise<boolean> {
   const current = findTxAnywhere(id);
   try { if (current) validateFinance(patch.amount ?? current.amount, patch.finance ?? current.finance); }
-  catch (e) { pushToast({ kind: "error", message: e instanceof Error ? e.message : "Invalid entry" }); return; }
+  catch (e) { pushToast({ kind: "error", message: e instanceof Error ? e.message : "Invalid entry" }); return false; }
   const resolved: ExpensePatch = {
     ...patch,
     ...(patch.categoryId !== undefined ? { categoryId: resolveCategoryId(patch.categoryId) } : {}),
@@ -497,11 +503,11 @@ export async function updateExpense(id: string, patch: ExpensePatch): Promise<vo
           : op,
       ),
     }));
-    return;
+    return true;
   }
   const prev = findTxAnywhere(id);
   applyPatchLocal(id, resolved);
-  await runWrite({ kind: "expense.update", id, patch: resolved }, {
+  return runWrite({ kind: "expense.update", id, patch: resolved }, {
     rollback: () => prev && applyUpsertLocal(prev),
     label: "expense",
   });
@@ -592,19 +598,19 @@ export async function deleteCategory(id: string): Promise<void> {
 // Recurring expenses
 // ---------------------------------------------------------------------------
 
-export async function addRecurring(r: Omit<Recurring, "id" | "lastRun">): Promise<void> {
+export async function addRecurring(r: Omit<Recurring, "id" | "lastRun">): Promise<boolean> {
   const rec: Recurring = { ...r, id: uid(), lastRun: "" };
   set((s) => ({ recurrings: [...(s.recurrings ?? []), rec] }));
-  await runWrite({ kind: "recurring.add", recurring: rec }, {
+  return runWrite({ kind: "recurring.add", recurring: rec }, {
     rollback: () => set((s) => ({ recurrings: s.recurrings?.filter((x) => x.id !== rec.id) })),
     label: "recurring expense",
   });
 }
 
-export async function updateRecurring(id: string, patch: Partial<Omit<Recurring, "id">>): Promise<void> {
+export async function updateRecurring(id: string, patch: Partial<Omit<Recurring, "id">>): Promise<boolean> {
   const prev = get().recurrings?.find((r) => r.id === id);
   set((s) => ({ recurrings: s.recurrings?.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
-  await runWrite({ kind: "recurring.update", id, patch }, {
+  return runWrite({ kind: "recurring.update", id, patch }, {
     rollback: () =>
       prev &&
       set((s) => ({ recurrings: s.recurrings?.map((r) => (r.id === id ? prev : r)) })),

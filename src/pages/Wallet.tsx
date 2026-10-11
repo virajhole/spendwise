@@ -3,14 +3,26 @@ import { CreditCard, Wallet as WalletIcon, Trash2 } from "lucide-react";
 import Header from "../components/Header";
 import Sheet from "../components/Sheet";
 import PaymentFields from "../components/PaymentFields";
-import { useLedger, saveExpense, deleteExpense } from "../store/data";
+import { useLedger, useCategories, saveExpense, deleteExpense } from "../store/data";
 import { useStore } from "../store/store";
 import { cardBalances, paymentTotals, PAYMENT_LABELS } from "../utils/finance";
 import { currentTime, todayISO, formatAmount } from "../utils/format";
-import type { FinanceDetails } from "../db/types";
+import type { FinanceDetails, PaymentMethod } from "../db/types";
 
 export default function Wallet() {
   const ledger = useLedger();
+  const categories = useCategories();
+  const [history, setHistory] = useState<{ card?: string; method?: PaymentMethod } | null>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const openHistory = (selection: { card?: string; method?: PaymentMethod }) => { setHistory(selection); setFromDate(""); setToDate(""); };
+  const historyRows = (ledger ?? []).filter(t => {
+    if (!history || t.finance?.offset) return false;
+    if (fromDate && t.date < fromDate || toDate && t.date > toDate) return false;
+    if (history.card) return t.finance?.cardName?.trim().toLowerCase() === history.card.trim().toLowerCase() && (t.finance.paymentMethod === "credit" || t.finance.kind === "card_payment");
+    return (t.finance?.paymentMethod ?? "unknown") === history.method;
+  }).sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time) || b.createdAt - a.createdAt);
+  const labels: Record<FinanceDetails["kind"], string> = { expense: "Purchase", lent: "Money lent", borrowed: "Money borrowed", split: "Shared bill", settlement: "Repayment", card_payment: "Card bill payment" };
   const { month, currency } = useStore();
   const cards = cardBalances(ledger ?? []);
   const methods = paymentTotals((ledger ?? []).filter(t => t.date.startsWith(month)));
@@ -33,18 +45,35 @@ export default function Wallet() {
     <div className="page-heading"><div><p className="eyebrow">YOUR MONEY, EVERYWHERE</p><h1>One clear picture.</h1></div><div className="page-icon"><WalletIcon size={24} /></div></div>
     <p className="page-subtitle">Know how you pay, and what's left on your cards.</p>
     <div className="section-heading mt-7"><h2>Spending by payment</h2><span>This month</span></div>
-    {!ledger ? <p role="status" className="empty-state">Loading wallet…</p> : <div className="surface mt-3 px-4">{Object.entries(methods).map(([key, total]) => <div key={key} className="flex items-center justify-between py-4 border-b last:border-0 border-slate-100 dark:border-slate-800"><span className="text-sm">{PAYMENT_LABELS[key as keyof typeof PAYMENT_LABELS]}</span><strong>{fmt(total)}</strong></div>)}</div>}
+    {!ledger ? <p role="status" className="empty-state">Loading wallet…</p> : <div className="surface mt-3 px-4">{Object.entries(methods).map(([key, total]) => <button type="button" aria-label={`View ${PAYMENT_LABELS[key as PaymentMethod]} transactions`} onClick={() => openHistory({ method: key as PaymentMethod })} key={key} className="w-full text-left flex items-center justify-between py-4 border-b last:border-0 border-slate-100 dark:border-slate-800"><span className="text-sm">{PAYMENT_LABELS[key as keyof typeof PAYMENT_LABELS]}</span><strong>{fmt(total)} <span aria-hidden className="text-slate-500">›</span></strong></button>)}</div>}
     <p className="mt-2 text-xs text-slate-500">Full purchase amounts, including friends' shares. Loans and repayments are excluded. Older entries stay “Not recorded”.</p>
     <div className="section-heading mt-7"><h2>Your credit cards</h2><span>All time</span></div>
-    {!cards.length ? <div className="empty-state"><CreditCard className="mx-auto mb-3 text-teal-600" /><strong>Your cards belong here.</strong><p>Add an expense with Credit card and a card name to get started.</p></div> : <div className="space-y-4 mt-3">{cards.map(card => <article className="wallet-card" key={card.name}>
+    {!cards.length ? <div className="empty-state"><CreditCard className="mx-auto mb-3 text-teal-600" /><strong>Your cards belong here.</strong><p>Add an expense with Credit card and a card name to get started.</p></div> : <div className="space-y-4 mt-3">{cards.map(card => <article className="wallet-card relative" key={card.name}>
+      <button type="button" className="absolute inset-0 rounded-[20px]" aria-label={`View ${card.name} transactions`} onClick={() => openHistory({ card: card.name })} />
       <div className="flex justify-between items-center"><span className="font-semibold">{card.name}</span><CreditCard size={24} /></div>
       <p className="mt-6 text-xs opacity-70">{card.outstanding < 0 ? "Credit balance" : "Unpaid recorded spending"}</p><strong className="block text-3xl font-semibold mt-1 tracking-tight">{fmt(Math.abs(card.outstanding))}</strong>
       <div className="flex justify-between text-xs mt-5 opacity-80"><span>Charged {fmt(card.spent)}</span><span>Repaid {fmt(card.paid)}</span></div>
-      <button className="mt-5 w-full rounded-xl bg-white/15 border border-white/20 py-3 text-sm font-semibold" onClick={() => { setFinance({ kind: "card_payment", paymentMethod: "upi", cardName: card.name }); setAmount(card.outstanding > 0 ? String(card.outstanding) : ""); setDate(todayISO()); setError(""); }}>Record bill payment</button>
+      <p className="text-xs opacity-70 mt-3">Tap to view transactions</p>
+      <button className="relative z-10 mt-5 w-full rounded-xl bg-white/15 border border-white/20 py-3 text-sm font-semibold" onClick={() => { setFinance({ kind: "card_payment", paymentMethod: "upi", cardName: card.name }); setAmount(card.outstanding > 0 ? String(card.outstanding) : ""); setDate(todayISO()); setError(""); }}>Record bill payment</button>
     </article>)}</div>}
     <p className="mt-4 text-xs text-slate-500">Balances use entries recorded in this app. Card bill payments reduce your dues without adding another expense.</p>
     {!!ledger?.some(t => t.finance?.kind === "card_payment") && <details className="surface mt-5 p-4"><summary className="text-sm font-semibold">Card payment history</summary>{ledger.filter(t => t.finance?.kind === "card_payment").map(t => <div className="flex items-center gap-2 py-3" key={t.id}><div className="min-w-0 flex-1"><p className="text-sm truncate">{t.finance?.cardName}</p><p className="text-xs text-slate-500">{t.date} · {fmt(t.amount)}</p></div><button className="icon-button text-red-500" aria-label={`Delete payment ${t.amount}`} onClick={() => void deleteExpense(t.id)}><Trash2 size={17} /></button></div>)}</details>}
   </div>
+  {history && <Sheet title={`${history.card ?? PAYMENT_LABELS[history.method!]} transactions`} onClose={() => setHistory(null)}>
+    <div className="space-y-4">
+      <p className="text-xs text-slate-500">All-time history, including loans and repayments. Spending totals on Wallet show purchases only.</p>
+      <div className="grid grid-cols-2 gap-3"><label className="field-label min-w-0">From date<input className="field" type="date" value={fromDate} max={toDate || undefined} onChange={e => setFromDate(e.target.value)} /></label><label className="field-label min-w-0">To date<input className="field" type="date" value={toDate} min={fromDate || undefined} onChange={e => setToDate(e.target.value)} /></label></div>
+      <div className="flex justify-between items-center"><p className="text-xs text-slate-500">{historyRows.length} transactions · Newest first</p>{(fromDate || toDate) && <button className="small-button" onClick={() => { setFromDate(""); setToDate(""); }}>All time</button>}</div>
+      {historyRows.map(t => <article className="surface p-4" key={t.id}>
+        <div className="flex items-start justify-between gap-3"><p className="font-semibold text-sm break-words min-w-0">{t.note || labels[t.finance?.kind ?? "expense"]}</p><strong className="shrink-0">{fmt(t.amount)}</strong></div>
+        <p className="text-xs text-slate-500 mt-2">{t.date} · {t.time} · {labels[t.finance?.kind ?? "expense"]}{t.finance?.kind === "settlement" ? (t.finance.direction === "in" ? " received" : " paid") : ""}</p>
+        <p className="text-xs text-slate-500 mt-1">{PAYMENT_LABELS[t.finance?.paymentMethod ?? "unknown"]}{t.finance?.cardName ? ` · ${t.finance.cardName}` : ""}{t.categoryId ? ` · ${categories.find(c => c.id === t.categoryId)?.name ?? "Uncategorized"}` : ""}</p>
+        {t.finance?.person && <p className="text-xs text-slate-500 mt-1">{t.finance.person}</p>}
+        {t.finance?.shares && <p className="text-xs text-slate-500 mt-1 break-words">{t.finance.shares.map(s => `${s.name}: ${fmt(s.amount)}`).join(" · ")}</p>}
+      </article>)}
+      {!historyRows.length && <p className="empty-state">No transactions for this selection.</p>}
+    </div>
+  </Sheet>}
   {finance && <Sheet title="Record card payment" onClose={() => { if (!busy) setFinance(null); }}><form className="space-y-4" onSubmit={e => { e.preventDefault(); void save(); }}>
     <label className="field-label">Amount ({currency})<input autoFocus required type="number" min="0.01" step="0.01" inputMode="decimal" className="field amount-field" value={amount} onChange={e => setAmount(e.target.value)} /></label>
     <PaymentFields value={finance} onChange={setFinance} repayment />

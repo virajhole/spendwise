@@ -22,7 +22,7 @@ export function exportCSV(
   const rows = [
     ["Date", "Time", "Note", "Category", "Amount", "Personal expense", "Type", "Payment method", "Card", "Person"].join(","),
     ...txs.map((t) =>
-      [t.date, t.time, esc(t.note || ""), esc(categoryName(t.categoryId)), String(t.amount), String(personalAmount(t)), t.finance?.kind ?? "expense", esc(PAYMENT_LABELS[t.finance?.paymentMethod ?? "unknown"]), esc(t.finance?.cardName ?? ""), esc(t.finance?.person ?? "")].join(","),
+      [t.date, t.time, esc(t.note || ""), esc(categoryName(t.categoryId)), String(t.amount), String(personalAmount(t)), t.finance?.offset ? "balance_adjustment" : t.finance?.kind ?? "expense", esc(t.finance?.offset ? "No money moved" : PAYMENT_LABELS[t.finance?.paymentMethod ?? "unknown"]), esc(t.finance?.cardName ?? ""), esc(t.finance?.person ?? "")].join(","),
     ),
   ];
   download(`expenses-${new Date().toISOString().slice(0, 10)}.csv`, rows.join("\n"), "text/csv");

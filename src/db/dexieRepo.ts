@@ -15,6 +15,7 @@ import {
 } from "./types";
 import { shiftMonth } from "../utils/calc";
 import { validateLedgerWrite } from "../utils/finance";
+import { validateNetBatch } from "../utils/netSettlement";
 
 /**
  * Repository backed by IndexedDB (Dexie) — used when Supabase env vars are
@@ -24,6 +25,15 @@ import { validateLedgerWrite } from "../utils/finance";
 export function createDexieRepository(): DataRepository {
   return {
     kind: "local",
+
+    async settleContact(txs: Transaction[]): Promise<void> {
+      await db.transaction("rw", db.transactions, async () => {
+        const rows = await db.transactions.toArray();
+        txs.forEach(t => validateExpenseInput(t));
+        validateNetBatch(txs, rows);
+        await db.transactions.bulkPut(txs);
+      });
+    },
 
     async getExpenses(range: DateRange): Promise<Transaction[]> {
       return db.transactions.where("date").between(range.from, range.to, true, true).toArray();
@@ -58,6 +68,8 @@ export function createDexieRepository(): DataRepository {
 
     async deleteExpense(id: string): Promise<void> {
       await db.transaction("rw", db.transactions, async () => {
+        const row = await db.transactions.get(id);
+        if (row?.finance?.offset || await db.transactions.filter(t => !!t.finance?.offset && t.finance.settlesId === id).count()) throw new Error("This entry is linked to an automatic balance adjustment");
         await db.transactions.filter(t => t.finance?.settlesId === id).delete();
         await db.transactions.delete(id);
       });
@@ -146,6 +158,12 @@ export function createDexieRepository(): DataRepository {
           validateExpenseInput(t);
           validateLedgerWrite(t, await db.transactions.toArray());
           await db.transactions.put(t);
+        }
+        const finalRows = await db.transactions.toArray();
+        const groups = new Set(finalRows.filter(t => t.finance?.offset).map(t => t.finance!.netGroupId));
+        for (const group of groups) {
+          const total = finalRows.filter(t => t.finance?.offset && t.finance.netGroupId === group).reduce((sum, t) => sum + Math.round(t.amount * 100) * (t.finance?.direction === "in" ? 1 : -1), 0);
+          if (total !== 0) throw new Error("Backup contains an incomplete balance adjustment");
         }
         if (data.budgets) await db.budgets.bulkPut(data.budgets);
         if (data.recurrings) await db.recurrings.bulkPut(data.recurrings);

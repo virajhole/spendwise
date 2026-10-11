@@ -1,22 +1,23 @@
 # SpendWise — Expense Tracker (PWA + Supabase + Vercel)
 
-A mobile-first expense tracker built with **React + Vite + Tailwind CSS v4**. Data lives in **Supabase** (Postgres with Row Level Security), syncs **live across devices** via realtime, works **offline** (optimistic writes + a durable retry queue), and is protected by **email/password or Google sign-in**. Installable as a **PWA** and deployable on **Vercel**.
+A mobile-first expense tracker built with **React + Vite + Tailwind CSS v4**. Data lives in **Supabase** (Postgres with Row Level Security), syncs **live across devices** via realtime, supports **offline ordinary writes** (optimistic writes + a durable retry queue; cloud net settlement requires connectivity), and is protected by **email/password or Google sign-in**. Installable as a **PWA** and deployable on **Vercel**.
 
 ## Features
 
-- **Cloud sync** — every expense, budget, category and recurring rule is stored in your Supabase account; changes made on one device appear live on the others (Supabase Realtime).
-- **Auth** — email + password, or "Continue with Google" (optional, see setup below). Sessions persist across restarts. An optional 4–8 digit PIN lock still works on top of sign-in.
-- **Offline-first writes** — adding an expense is instant (optimistic update). If the network is down the write is queued in IndexedDB and syncs automatically when you're back online. Hard failures roll back with a **Retry** toast.
-- **One-time local import** — on first login the app offers to upload any data that predates the cloud (your old IndexedDB data). The upload is batched and idempotent; your local copy is never deleted.
-- **Dashboard** — monthly budget (tap to edit, defaults to last month's budget), total expense, remaining balance, animated progress bar, alert banners at 80% and 100%.
-- **Month switcher** — each month fetches only its own expenses (server-side `spent_at` range filter) with loading skeletons.
-- **Transactions** — newest first, grouped by date, swipe-to-delete with undo, tap to edit, search + category filter + custom date range.
-- **Calculator input pad** — large display, note field, category chips, haptic keypad.
-- **Stats** — donut chart by category, daily bars, top category, avg/day, projected month-end.
-- **Categories / recurring expenses** — 7 defaults per account, custom ones supported; monthly recurring rules auto-run on app open.
-- **Theme & currency** — light/dark/system, INR ₹ default with Indian grouping — both synced to your account.
-- **Data tools** — export CSV/JSON, import JSON, demo data, clear all.
-- **PWA** — installable, offline app shell; the service worker **never caches Supabase API traffic** (`NetworkOnly`), so synced data can never go stale.
+- **Mobile UI:** five tabs—Home, People, Wallet, Reports and Settings—with touch-friendly controls, tap-to-edit entries, scrollable sheets and PWA installation.
+- **Home:** monthly budget, personal expenses, remaining balance, search, category/date filters and quick Hinglish/English text entry. Try `chai 15`, `Burger King 173 SBI cc`, `Rini take 300 dinner`, or `mujhe Rini ko 299 dene hain`. Payment defaults to UPI. Parsing uses local rules, not an AI service; ambiguous entries need more detail or the manual form.
+- **People:** searchable contacts combine money lent, borrowed, split shares and repayments. Green means money to receive; red means money to pay. Contacts show the net balance, complete activity and a Payments tab. People has no month switcher: balances are all-time, with date/type filters for history.
+- **Splits:** equal shares, exact amounts, or fixed shares with the remainder divided among Auto participants. Only your share counts as your personal expense. Every paise is allocated.
+- **Settle up:** Pay/Receive is prefilled with the contact's net amount. Partial payments work too. Borrowed ₹1,000 minus a ₹200 receivable means Pay ₹800; confirming records ₹200 matching non-cash adjustments and ₹800 actual payment atomically. The app records payments already made; it does not transfer money.
+- **Editing:** change names, amounts, categories, payment methods, dates and lending/borrowing direction. Existing repayment links remain intact. Amounts cannot fall below recorded repayments; direction changes require removing conflicting repayments. Automatic net adjustments cannot be edited individually.
+- **Wallet:** monthly spending by payment method and all-time named card balances. Tap SBI/HDFC or UPI/Cash/Debit/Bank to open that selection's full history, including repayments, with date filters. Card bill payments reduce card dues without becoming another expense.
+- **Reports:** personal expenses, gross purchases, category/daily charts, recurring schedules, card dues and one net-balance row per contact.
+- **Recurring bills:** editable name, amount, category, day (1–28), active/paused status and active monthly total. Schedules run when the app opens on or after the due day; edits do not reset the last-run marker or rewrite generated expenses.
+- **Appearance:** green light theme and neutral black/charcoal dark surfaces. Header button switches directly between light and dark with one tap, including from System mode. Settings retains Light/Dark/System. Currency selection has been removed; existing currency preferences are preserved (INR by default).
+- **Cloud and local storage:** Supabase Auth, RLS, realtime updates and durable offline queues for ordinary writes. Without Supabase configuration, IndexedDB provides local-only storage. Cloud net settlements require connectivity and completed pending sync; local net settlements work offline.
+- **Data and device tools:** CSV/JSON export, JSON import, demo data, clear all, custom categories, optional PIN lock and app-open reminders. Existing pre-cloud data can be imported into the signed-in account.
+
+See [the feature and accounting guide](docs/mobile-finance.md) for examples, payment semantics and limitations.
 
 ## Tech stack
 
@@ -50,7 +51,7 @@ A mobile-first expense tracker built with **React + Vite + Tailwind CSS v4**. Da
     ├── store/
     │   ├── data.ts             # data hooks + optimistic mutations + realtime
     │   └── store.ts            # UI state (month, filters, theme, currency)
-    ├── pages/                  # Dashboard, Stats, Settings, Login
+    ├── pages/                  # Dashboard, People, Wallet, Stats, Settings, Login
     └── components/             # Header, TransactionList, InputPad, ToastHost, MigrationPrompt, …
 ```
 
@@ -59,7 +60,7 @@ Components only ever call the repository/store layer — never Supabase directly
 ## 1. Create the Supabase project
 
 1. Go to [supabase.com](https://supabase.com) → **New project** (any name, e.g. `spendwise`; pick a region near you and a strong DB password).
-2. When it's ready, open **SQL Editor → New query**, paste the entire contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. Then run [`supabase/migrations/20261011_finance.sql`](supabase/migrations/20261011_finance.sql). Existing installations only need the finance migration. It adds payment methods and ledger metadata with server validation; existing expenses keep their original amounts and an unrecorded payment method.
+2. When it's ready, open **SQL Editor → New query**, paste the entire contents of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. Then run these migrations in order: [`20261011_finance.sql`](supabase/migrations/20261011_finance.sql), [`20261012_editable_finance.sql`](supabase/migrations/20261012_editable_finance.sql), and [`20261013_net_settlement.sql`](supabase/migrations/20261013_net_settlement.sql). Existing installations run only migrations not already applied. The app/build does not apply SQL automatically. These add payment metadata, safe ledger edits, and atomic net settlement with server validation; existing expenses keep their original amounts and an unrecorded payment method.
 3. Go to **Project Settings → API** and copy two values:
    - **Project URL** → `VITE_SUPABASE_URL`
    - **anon public key** → `VITE_SUPABASE_ANON_KEY`
@@ -78,7 +79,7 @@ Email/password works out of the box. To enable **"Continue with Google"**, do th
 4. **Authorized redirect URIs** — add exactly:
    - `https://<project-ref>.supabase.co/auth/v1/callback`
    (replace `<project-ref>` with your Supabase project ref — the long id in your project URL, also shown in Project Settings → General).
-5. *(Optional)* **Authorized JavaScript origins**: `http://localhost:5173` and your Vercel URL — not strictly required for the Supabase server-side flow, but harmless.
+5. *(Optional)* **Authorized JavaScript origins**: `http://localhost:5175` and your Vercel URL — not strictly required for the Supabase server-side flow, but harmless.
 6. Copy the **Client ID** and **Client secret**.
 
 **2. Supabase — enable the Google provider**
@@ -92,7 +93,7 @@ Supabase Dashboard → **Authentication → URL Configuration**:
 - **Site URL**: your Vercel URL, e.g. `https://spendwise.vercel.app`
 - **Redirect URLs** — add all of these:
   - `https://spendwise.vercel.app/**` (your Vercel URL with the `/**` wildcard)
-  - `http://localhost:5173/**` (local dev)
+  - `http://localhost:5175/**` (local dev)
   - optionally `http://localhost:4173/**` for `npm run preview`
 
 That's it. The app calls `supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } })`, so after consenting, the browser returns to your site, the client detects the session in the URL (`detectSessionInUrl: true`), the `?code=…` params are scrubbed from the address bar, and you land on the dashboard. If Google returns an error (provider disabled, unregistered redirect URL, …), the login screen shows the exact `error` / `error_description` from the URL with the most common causes — no blank error page.
@@ -172,3 +173,6 @@ never touched). Chrome must be installed (tests use the system Chrome via
 - **Data not updating live** — check the browser console for realtime errors; Realtime requires the `supabase_realtime` publication line that `schema.sql` adds for `expenses`.
 - **Stale UI during development** — service worker caches the app shell; DevTools → Application → Service Workers → *Unregister*, then reload.
 - **Wrong app on localhost:5173** — this app always uses port 5175 in dev (`npm run dev:alt` for 5176).
+
+- **Settle up says the function is missing** — run `20261013_net_settlement.sql` after both earlier finance migrations in your Supabase SQL Editor. Local builds do not update the cloud database.
+- **Names appear as separate contacts** — names match ignoring case and repeated spaces. Different spellings remain distinct; edit the entry to use the existing contact name.

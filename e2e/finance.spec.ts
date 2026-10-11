@@ -8,6 +8,7 @@ test("mobile split, partial repayment, wallet and reports stay consistent", asyn
   await waitForApp(page);
   const nav = page.getByRole("navigation", { name: "Main" });
   await nav.getByRole("link", { name: "People", exact: true }).click();
+  await page.getByRole("button", { name: "Entries", exact: true }).click();
   await page.getByRole("button", { name: "Split a bill", exact: true }).click();
   let sheet = page.getByRole("dialog");
   await sheet.getByLabel(/Bill total/).fill("1000");
@@ -41,6 +42,7 @@ test("mobile split, partial repayment, wallet and reports stay consistent", asyn
   await page.screenshot({ path: "test-results/mobile-home.png", animations: "disabled" });
   await page.reload();
   await nav.getByRole("link", { name: "People", exact: true }).click();
+  await page.getByRole("button", { name: "Entries", exact: true }).click();
   await expect(arbaz).toContainText("₹125");
   for (const width of [320, 390, 480]) {
     await page.setViewportSize({ width, height: 780 });

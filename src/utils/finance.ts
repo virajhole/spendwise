@@ -18,9 +18,22 @@ export function equalShares(amount: number, names: string[]): SplitShare[] {
   return names.map((name, i) => ({ id: String(i), name: name.trim(), isMe: i === 0, amount: (Math.floor(cents / names.length) + (i < cents % names.length ? 1 : 0)) / 100 }));
 }
 
+/** Blank amounts share the remainder, with every paise assigned exactly once. */
+export function mixedShares(amount: number, names: string[], fixed: Record<string, string>): SplitShare[] {
+  const automatic = names.filter(name => !fixed[name]?.trim());
+  const fixedTotal = names.reduce((sum, name) => sum + Math.round(Number(fixed[name] || 0) * 100), 0);
+  if (names.some(name => fixed[name]?.trim() && (!Number.isFinite(Number(fixed[name])) || Number(fixed[name]) < 0 || Math.abs(Number(fixed[name]) * 100 - Math.round(Number(fixed[name]) * 100)) > 0.001))) throw new Error("Use positive amounts or zero, with at most 2 decimals");
+  const remainder = Math.round(amount * 100) - fixedTotal;
+  if (remainder < 0) throw new Error("Fixed shares exceed the bill total");
+  if (!automatic.length && remainder !== 0) throw new Error("Leave someone on Auto to split the remainder");
+  const autoShares = automatic.length ? equalShares(remainder / 100, automatic) : [];
+  return names.map((name, i) => ({ id: String(i), name, isMe: i === 0, amount: fixed[name]?.trim() ? Number(fixed[name]) : autoShares.find(s => s.name === name)!.amount }));
+}
+
 export function validateFinance(amount: number, f?: FinanceDetails): void {
   if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_AMOUNT || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.001) throw new Error("Enter a valid amount with at most 2 decimal places");
   if (!f) return;
+  if (f.offset && (f.kind !== "settlement" || !f.netGroupId || f.paymentMethod !== "unknown")) throw new Error("Invalid automatic adjustment");
   if (!(f.paymentMethod in PAYMENT_LABELS)) throw new Error("Choose a payment method");
   if (!["expense", "lent", "borrowed", "split", "settlement", "card_payment"].includes(f.kind)) throw new Error("Invalid entry type");
   if ((f.paymentMethod === "credit" || f.kind === "card_payment") && !f.cardName?.trim()) throw new Error("Enter a card name");
@@ -61,11 +74,23 @@ export function balances(txs: Transaction[]): Balance[] {
 export function validateLedgerWrite(t: Transaction, rows: Transaction[]): void {
   validateFinance(t.amount, t.finance);
   const previous = rows.find(r => r.id === t.id);
-  if (previous && rows.some(r => r.finance?.settlesId === t.id) && (previous.amount !== t.amount || JSON.stringify(previous.finance) !== JSON.stringify(t.finance))) throw new Error("Remove repayments before changing this entry");
+  if (previous?.finance?.offset && JSON.stringify(previous) !== JSON.stringify(t)) throw new Error("Automatic balance adjustments cannot be edited individually");
+  if (previous) {
+    const repayments = rows.filter(r => r.finance?.kind === "settlement" && r.finance.settlesId === t.id);
+    const editedBalances = balances([t]);
+    for (const repayment of repayments) {
+      const target = editedBalances.find(b => b.shareId === repayment.finance?.settlesShareId);
+      const paid = repayments.filter(r => r.finance?.settlesShareId === repayment.finance?.settlesShareId).reduce((sum, r) => sum + r.amount, 0);
+      if (!target || target.direction !== repayment.finance?.direction) throw new Error("Remove repayments before changing the direction or removing a repaid person");
+      if (target.original < money(paid)) throw new Error("Amount cannot be less than payments already recorded");
+      if (t.date > repayment.date) throw new Error("Entry date cannot be after its repayments");
+    }
+  }
   if (t.finance?.kind !== "settlement") return;
   const f = t.finance;
   const target = balances(rows.filter(r => r.id !== t.id)).find(b => b.key === `${f.settlesId}:${f.settlesShareId ?? ""}`);
   if (!target || f.settlesId === t.id) throw new Error("Original entry not found");
+  if (t.date < target.transaction.date) throw new Error("Repayment date cannot be before the original entry");
   if (f.direction !== target.direction || t.amount > target.remaining) throw new Error("Repayment exceeds the outstanding balance or has the wrong direction");
 }
 

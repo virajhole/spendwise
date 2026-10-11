@@ -8,30 +8,25 @@ import { exportCSV, exportJSON, readJSONFile } from "../utils/export";
 import { useStore, type ThemeMode } from "../store/store";
 import {
   addCategory,
-  addRecurring,
   clearAllData,
   deleteCategory,
-  deleteRecurring,
   refreshAllData,
   startMigration,
-  updateRecurring,
   useCategories,
-  useRecurrings,
 } from "../store/data";
 import { useAuth } from "../auth/AuthProvider";
 import { getStoredPin, setStoredPin } from "../hooks/useAppLock";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import { getReminder, setReminder, type ReminderPref } from "../utils/reminder";
-import { formatAmount } from "../utils/format";
+import RecurringExpenses from "../components/RecurringExpenses";
 import { pushToast } from "../store/toast";
 
-const CURRENCIES = ["₹", "$", "€", "£", "¥"];
+
 
 export default function SettingsPage() {
-  const { currency, setCurrency, theme, setTheme } = useStore();
+  const { theme, setTheme } = useStore();
   const { user, signOut } = useAuth();
   const categories = useCategories();
-  const recurrings = useRecurrings();
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
   const [pin, setPin] = useState(getStoredPin() ?? "");
@@ -143,25 +138,6 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        {/* Currency */}
-        <Card title="Currency">
-          <div className="flex gap-2">
-            {CURRENCIES.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCurrency(c)}
-                aria-pressed={currency === c}
-                className={`h-11 w-11 rounded-xl text-lg font-bold ${
-                  currency === c ? "bg-teal-600 text-white" : "bg-slate-100 dark:bg-slate-800"
-                }`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-slate-400">Preview: {formatAmount(123456, currency)} (Indian grouping)</p>
-        </Card>
-
         {/* Categories */}
         <Card title="Categories">
           <ul className="space-y-2">
@@ -192,34 +168,7 @@ export default function SettingsPage() {
           }} />
         </Card>
 
-        {/* Recurring */}
-        <Card title="Recurring expenses">
-          {recurrings.length === 0 ? <p className="text-sm text-slate-400">None yet.</p> : (
-            <ul className="space-y-2">
-              {recurrings.map((r) => (
-                <li key={r.id} className="flex items-center gap-3 text-sm">
-                  <span className="flex-1 font-medium">{r.name}</span>
-                  <span className="tabular-nums">{formatAmount(r.amount, currency)}</span>
-                  <span className="text-xs text-slate-400">day {r.day}</span>
-                  <button
-                    onClick={() => void updateRecurring(r.id, { active: !r.active })}
-                    aria-label={`Toggle ${r.name}`}
-                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${r.active ? "bg-teal-600/15 text-teal-600" : "bg-slate-200 text-slate-400 dark:bg-slate-800"}`}
-                  >
-                    {r.active ? "ON" : "OFF"}
-                  </button>
-                  <button onClick={() => void deleteRecurring(r.id)} aria-label={`Delete ${r.name}`} className="text-slate-400 hover:text-red-500">
-                    <Trash2 size={16} aria-hidden />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <AddRecurring onAdd={async (r) => {
-            await addRecurring(r);
-            flash(`Added ${r.name}`);
-          }} />
-        </Card>
+        <Card title="Recurring expenses"><RecurringExpenses /></Card>
 
         {/* Data */}
         <Card title="Data">
@@ -459,47 +408,6 @@ function AddCategory({ onAdd }: { onAdd: (name: string, icon: string, color: str
       >
         Add
       </button>
-    </div>
-  );
-}
-
-function AddRecurring({ onAdd }: { onAdd: (r: { name: string; amount: number; categoryId: string; day: number; active: boolean }) => void }) {
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [day, setDay] = useState("1");
-  const { currency } = useStore();
-  const categories = useCategories();
-  return (
-    <div className="mt-3 space-y-2">
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Monthly rent" aria-label="Recurring name" className="w-full rounded-xl bg-slate-100 px-3 py-2 outline-none dark:bg-slate-800" />
-      <div className="flex gap-2">
-        <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`Amount (${currency})`} aria-label="Recurring amount" className="min-w-0 flex-1 rounded-xl bg-slate-100 px-3 py-2 outline-none dark:bg-slate-800" />
-        <input type="number" min={1} max={28} value={day} onChange={(e) => setDay(e.target.value)} aria-label="Day of month" className="w-20 rounded-xl bg-slate-100 px-3 py-2 outline-none dark:bg-slate-800" />
-        <button
-          onClick={() => {
-            const amt = Number(amount);
-            if (name.trim() && amt > 0) {
-              onAdd({
-                name: name.trim(),
-                amount: amt,
-                categoryId: categories[0]?.id ?? "",
-                day: Math.min(28, Math.max(1, Number(day) || 1)),
-                active: true,
-              });
-              setName("");
-              setAmount("");
-            } else if (!name.trim()) {
-              pushToast({ kind: "error", message: "Give the recurring expense a name" });
-            } else {
-              pushToast({ kind: "error", message: "Amount must be greater than 0" });
-            }
-          }}
-          className="rounded-xl bg-teal-600 px-4 text-sm font-bold text-white"
-        >
-          Add
-        </button>
-      </div>
-      <p className="text-xs text-slate-400">Runs on day {day} of each month while the app is opened.</p>
     </div>
   );
 }

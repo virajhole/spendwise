@@ -151,7 +151,10 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
   async function upsertExpenses(txs: Transaction[]): Promise<void> {
     txs.forEach(t => { validateExpenseInput(t); validateFinance(t.amount, t.finance); });
     const ordered = [...txs].sort((a,b) => Number(a.finance?.kind === "settlement") - Number(b.finance?.kind === "settlement"));
-    for (const part of chunk(ordered, CHUNK)) {
+    const groups = new Map<string, Transaction[]>();
+    for (const t of ordered) if (t.finance?.netGroupId) groups.set(t.finance.netGroupId, [...(groups.get(t.finance.netGroupId) ?? []), t]);
+    // Keep both sides of an adjustment in one database transaction during restore.
+    for (const part of [...chunk(ordered.filter(t => !t.finance?.netGroupId), CHUNK), ...groups.values()]) {
       const res = await client.from("expenses").upsert(part.map(expenseToRow));
       throwIfError(res);
     }
@@ -159,6 +162,12 @@ export function createSupabaseRepository(client: SupabaseClient): DataRepository
 
   const repo: DataRepository = {
     kind: "supabase",
+
+    async settleContact(txs: Transaction[]): Promise<void> {
+      txs.forEach(t => { validateExpenseInput(t); validateFinance(t.amount, t.finance); });
+      const res = await client.rpc("settle_contact", { p_rows: txs.map(expenseToRow) });
+      throwIfError(res);
+    },
 
     // ---------------------------------------------------------- expenses
     async getExpenses(range: DateRange): Promise<Transaction[]> {

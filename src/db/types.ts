@@ -36,6 +36,8 @@ export interface FinanceDetails {
   settlesId?: string;
   settlesShareId?: string;
   direction?: "in" | "out";
+  netGroupId?: string;
+  offset?: boolean;
 }
 
 export interface Budget {
@@ -439,6 +441,7 @@ export interface DataRepository {
   getAllExpenses(): Promise<Transaction[]>;
   /** Upsert semantics — idempotent by id (offline retries, recurring, demo data). */
   addExpense(t: Transaction): Promise<void>;
+  settleContact(txs: Transaction[]): Promise<void>;
   updateExpense(id: string, patch: ExpensePatch): Promise<void>;
   deleteExpense(id: string): Promise<void>;
 
