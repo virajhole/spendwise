@@ -1,3 +1,5 @@
+import ContactWhatsApp from "./ContactWhatsApp";
+import WhatsAppSplitLink from "./WhatsAppSplitLink";
 import NetSettlementSheet from "./NetSettlementSheet";
 import { useSearchParams } from "react-router-dom";
 import { useMemo, useState } from "react";
@@ -40,6 +42,7 @@ export default function PeopleContacts({ ledger, categories, currency, onEdit, o
     <button className="small-button inline-flex items-center gap-2" onClick={() => setSelected(null)}><ArrowLeft size={16} /> All contacts</button>
     <div className="flex items-center gap-3"><span className="person-avatar">{person.name[0].toUpperCase()}</span><h2 className="text-xl font-semibold break-words">{person.name}</h2></div>
     <div className="surface p-4"><p className="text-xs text-slate-500">Balance with you</p><strong className={`text-3xl ${tone(person.net)}`}>{fmt(Math.abs(person.net))}</strong><p className="text-sm">{person.net > 0 ? `${person.name} owes you` : person.net < 0 ? `You owe ${person.name}` : "Net balance is zero"}</p><p className="text-xs text-slate-500 mt-2">To receive {fmt(person.receivable)} · To pay {fmt(person.payable)}</p><p className="text-xs text-slate-500 mt-1">Settle up once for the net amount. Opposite balances adjust automatically.</p></div>
+    <ContactWhatsApp key={person.key} person={person} currency={currency} />
     {(person.receivable > 0 || person.payable > 0) && <button className="primary-button w-full" onClick={() => setSettleOpen(true)}>{person.net < 0 ? `Pay ${fmt(-person.net)}` : person.net > 0 ? `Receive ${fmt(person.net)}` : "Settle matching balances"}</button>}
     {settleOpen && <NetSettlementSheet person={person} ledger={ledger} currency={currency} onClose={() => setSettleOpen(false)} />}
     <details><summary className="text-xs text-slate-500 cursor-pointer">Balance breakdown</summary><dl className="grid grid-cols-2 gap-3 text-sm">{[["You lent", person.lent], ["You borrowed", person.borrowed], ["Their split shares", person.split], ["Repayments received", person.received], ["Repayments paid", person.paid]].map(([label, value]) => <div key={label} className="surface p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="font-semibold mt-1">{fmt(Number(value))}</dd></div>)}</dl></details>
@@ -59,6 +62,7 @@ export default function PeopleContacts({ ledger, categories, currency, onEdit, o
       {t.finance?.kind === "split" && <p className="text-xs text-slate-500 mt-1">Full bill {fmt(t.amount)} · {t.finance.shares?.map(s => `${s.name}: ${fmt(s.amount)}`).join(" · ")}</p>}
       {t.finance?.dueDate && <p className="text-xs text-slate-500 mt-1">Due {t.finance.dueDate}</p>}
       {balance && <div className="mt-3 flex justify-between gap-2 items-center"><span className="text-xs text-slate-500">{balance.remaining === 0 ? "Fully paid" : `Remaining ${fmt(balance.remaining)}`}</span>{balance.remaining > 0 && <button className="small-button relative z-10" onClick={() => { setType("all"); setFrom(""); setTo(""); onPayment(balance); }}>Record payment</button>}</div>}
+      {balance && <WhatsAppSplitLink balance={balance} currency={currency} />}
     </article>)}
     {!entries.length && <p className="empty-state">No transactions match these filters.</p>}
   </section>;

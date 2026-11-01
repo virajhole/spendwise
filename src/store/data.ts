@@ -115,10 +115,11 @@ async function cachedCloudLoad<T>(
 /** Transactions for the viewed month (or the custom date filter range).
  *  `undefined` while loading → callers show skeletons. */
 export function useTransactions(requestedRange?: DateRange): Transaction[] | undefined {
-  const { month, dateFrom, dateTo } = useUIStore();
+  const month = useUIStore(s => s.month);
+  const dateFrom = useUIStore(s => s.dateFrom);
+  const dateTo = useUIStore(s => s.dateTo);
   const userId = useDataStore((s) => s.userId);
   const booted = useDataStore((s) => s.booted);
-  const ranges = useDataStore((s) => s.ranges);
   const pendingOps = useDataStore((s) => s.pendingOps);
   const range = requestedRange ?? effectiveRange(month, dateFrom, dateTo);
   const key = `${range.from}:${range.to}`;
@@ -129,7 +130,7 @@ export function useTransactions(requestedRange?: DateRange): Transaction[] | und
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, booted, key]);
 
-  const rows = ranges[key];
+  const rows = useDataStore(s => s.ranges[key]);
   return useMemo(() => {
     if (rows === undefined) return undefined;
     const pendingTxs = pendingOps

@@ -14,7 +14,7 @@ const LONG_PRESS_MS = 500;
 const VIRTUALIZE_OVER = 100;
 
 interface Props {
-  /** Already filtered + sorted upstream (Dashboard). */
+  /** Already filtered upstream (Dashboard). */
   transactions: Transaction[] | undefined;
   categories: Category[];
   currency: string;
@@ -48,7 +48,8 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 export default function TransactionList({ transactions, categories, currency, search, scrollRef, onDelete, onRestore, onDeleteMany }: Props) {
   const catMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const { month, setEditing } = useStore();
+  const month = useStore(s => s.month);
+  const setEditing = useStore(s => s.setEditing);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ txs: Transaction[]; timer: number } | null>(null);
   const haptic = useHaptics();
@@ -57,27 +58,29 @@ export default function TransactionList({ transactions, categories, currency, se
 
   // Reset transient state whenever the view changes (month, filters, search).
   useEffect(() => {
-    setSelection(new Set());
+    setSelection(current => current.size ? new Set() : current);
   }, [month, transactions]);
 
   const sorted = useMemo(() => sortByNewest(transactions ?? []), [transactions]);
   const groups = useMemo(() => groupByDate(sorted), [sorted]);
 
   // Flatten once for the virtualized variant (>100 items).
+  const virtualize = sorted.length + groups.length > VIRTUALIZE_OVER;
   const flat = useMemo(() => {
+    if (!virtualize) return [];
     const rows: { type: "header" | "row"; key: string; label?: string; tx?: Transaction }[] = [];
     for (const g of groups) {
       rows.push({ type: "header", key: `h:${g.date}`, label: g.label });
       for (const t of g.items) rows.push({ type: "row", key: t.id, tx: t });
     }
     return rows;
-  }, [groups]);
-  const virtualize = flat.length > VIRTUALIZE_OVER;
+  }, [groups, virtualize]);
 
   // @tanstack/react-virtual is imperative — the hook rule can't model this
   // usage (measured rows, stable keys), so silence just that rule here.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
+    enabled: virtualize,
     count: flat.length,
     getScrollElement: () => scrollRef?.current ?? null,
     estimateSize: (i) => (flat[i]?.type === "header" ? 32 : 76),

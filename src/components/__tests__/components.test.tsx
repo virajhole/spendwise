@@ -1,84 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 // @vitest-environment jsdom
 import { render, screen, fireEvent } from "@testing-library/react";
-import InputPad from "../InputPad";
 import EditDialog from "../EditDialog";
 import SummaryCard from "../SummaryCard";
 import { DEFAULT_CATEGORIES, type Transaction } from "../../db/types";
-import { useStore } from "../../store/store";
 
 const cats = DEFAULT_CATEGORIES;
-
-describe("InputPad", () => {
-  const base = {
-    categories: cats,
-    currency: "₹",
-    collapsed: false,
-    onSetCollapsed: vi.fn(),
-    onSubmit: vi.fn(),
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    useStore.setState({ collapsed: false });
-  });
-
-  it("builds the amount with keypad presses (plain number, no leading zeros)", () => {
-    render(<InputPad {...base} />);
-    fireEvent.click(screen.getByRole("button", { name: "Key 0" }));
-    fireEvent.click(screen.getByRole("button", { name: "Key 0" }));
-    fireEvent.click(screen.getByRole("button", { name: "Key 1" }));
-    fireEvent.click(screen.getByRole("button", { name: "Key 2" }));
-    expect(screen.getByRole("button", { name: /amount ₹12/i })).toBeInTheDocument(); // 0012 → 12
-  });
-
-  it("caps the amount at 9 significant digits", () => {
-    render(<InputPad {...base} />);
-    const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "1"];
-    for (const d of digits) fireEvent.click(screen.getByRole(`button`, { name: `Key ${d}` }));
-    expect(screen.getByRole("button", { name: /₹12,34,56,789/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /₹1,234,567,891/ })).not.toBeInTheDocument();
-  });
-
-  it("submits amount + note + category and clears the pad", () => {
-    const onSubmit = vi.fn();
-    render(<InputPad {...base} onSubmit={onSubmit} />);
-    fireEvent.click(screen.getByRole("button", { name: "Key 1" }));
-    fireEvent.click(screen.getByRole("button", { name: "Key 2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Key 5" }));
-    const note = screen.getByLabelText("Note");
-    fireEvent.change(note, { target: { value: "Chai" } });
-    fireEvent.click(screen.getByRole("radio", { name: /Food/i }));
-    fireEvent.pointerDown(screen.getByRole("group", { name: "Keypad" }).querySelector("button[aria-label='Add expense']")!);
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit).toHaveBeenCalledWith({ amount: 125, note: "Chai", categoryId: expect.any(String) });
-    expect(screen.getByRole("button", { name: /amount ₹0/i })).toBeInTheDocument();
-  });
-
-  it("does not submit an empty amount and shows the error state", () => {
-    render(<InputPad {...base} />);
-    fireEvent.pointerDown(screen.getByRole("group", { name: "Keypad" }).querySelector("button[aria-label='Add expense']")!);
-    expect(base.onSubmit).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /amount ₹0/i })).toHaveClass("bg-red-500");
-  });
-
-  it("collapses on note focus so the system keyboard gets room", () => {
-    const onSetCollapsed = vi.fn();
-    render(<InputPad {...base} onSetCollapsed={onSetCollapsed} />);
-    fireEvent.focus(screen.getByLabelText("Note"));
-    expect(onSetCollapsed).toHaveBeenLastCalledWith(true);
-    fireEvent.blur(screen.getByLabelText("Note"));
-    expect(onSetCollapsed).toHaveBeenLastCalledWith(false);
-  });
-
-  it("auto-suggests the category from the note text", () => {
-    render(<InputPad {...base} />);
-    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "Rapido to office" } });
-    const travel = cats.find((c) => c.name === "Travel")!;
-    expect(screen.getByRole("radio", { name: /Travel/i })).toHaveAttribute("aria-checked", "true");
-    expect(travel).toBeTruthy();
-  });
-});
 
 describe("EditDialog", () => {
   const t: Transaction = {

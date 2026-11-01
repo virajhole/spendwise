@@ -247,3 +247,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .dark .month-navigation, .dark .shortcut-card small, .dark .empty-state,
 .dark .section-heading > span { color: #a3a3a3; }
 .dark .money-sheet::backdrop { background: #0009; }
+
+.shortcut-card { justify-content: center; gap: 4px; padding: 8px 3px; min-height: 44px; }
+.shortcut-card span { flex: initial; font-size: 11px; }

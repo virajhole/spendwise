@@ -1,6 +1,8 @@
+import { useSearchParams } from "react-router-dom";
 import { useMemo, useRef, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Plus, Users, Check, Trash2, Pencil } from "lucide-react";
 import PeopleContacts from "../components/PeopleContacts";
+import WhatsAppSplitLink from "../components/WhatsAppSplitLink";
 import Header from "../components/Header";
 import Sheet from "../components/Sheet";
 import PaymentFields from "../components/PaymentFields";
@@ -12,11 +14,12 @@ import type { FinanceDetails, Transaction } from "../db/types";
 import { pushToast } from "../store/toast";
 
 export default function People() {
+  const [params] = useSearchParams();
   const ledger = useLedger();
   const categories = useCategories();
   const { currency } = useStore();
   const [view, setView] = useState<"entries" | "contacts">("contacts");
-  const [mode, setMode] = useState<"lent" | "borrowed" | "split" | null>(null);
+  const [mode, setMode] = useState<"lent" | "borrowed" | "split" | null>(params.get("add") === "split" ? "split" : null);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [direction, setDirection] = useState("all");
   const [fromDate, setFromDate] = useState("");
@@ -124,6 +127,7 @@ export default function People() {
           <div className="flex items-start gap-3"><span className="person-avatar">{b.name.slice(0, 1).toUpperCase()}</span><div className="min-w-0 flex-1"><h3 className="font-semibold truncate">{b.name}</h3><p className="text-xs text-slate-500 truncate">{b.transaction.note} · {b.transaction.date}</p></div><div className="text-right shrink-0"><strong className={b.direction === "in" ? "text-teal-700 dark:text-teal-400" : "text-red-600 dark:text-red-400"}>{fmt(b.remaining)}</strong><p className="text-xs text-slate-500">{b.remaining === 0 ? "Settled" : b.direction === "in" ? "owes you" : "you owe"}</p></div></div>
           <p className="mt-2 text-[10px] text-slate-500 pointer-events-none">Tap to edit</p>
           <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-500"><span>Original {fmt(b.original)} · Paid {fmt(money(b.original - b.remaining))}{b.transaction.finance?.dueDate ? ` · Due ${b.transaction.finance.dueDate}` : ""}</span>{b.remaining > 0 && <button className="small-button relative z-10" onClick={() => { reset(); setSettling(b); setAmount(String(b.remaining)); }}>Record payment</button>}</div>
+          <WhatsAppSplitLink balance={b} currency={currency} />
         </article>)}</div>}
       {!!ledger?.some(t => t.finance && ["lent", "borrowed", "split", "settlement"].includes(t.finance.kind)) && <details className="surface mt-5 p-4"><summary className="cursor-pointer font-semibold text-sm">Entry & repayment history</summary><p className="mt-2 text-xs text-slate-500">Edit entries here. Recorded repayments stay linked; remove a mistaken repayment before reversing its direction.</p>{ledger.filter(t => t.finance && ["lent", "borrowed", "split", "settlement"].includes(t.finance.kind)).sort((a,b) => b.createdAt - a.createdAt).map(t => <div key={t.id} className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-slate-800"><div className="min-w-0 flex-1"><p className="text-sm truncate">{t.note}</p><p className="text-xs text-slate-500">{t.date} · {t.finance?.kind} · {fmt(t.amount)}</p></div><button className="icon-button" aria-label={`Edit ${t.note}`} onClick={() => edit(t)}><Pencil size={17} /></button><button disabled={busy || !!t.finance?.offset || ledger.some(s => s.finance?.settlesId === t.id)} className="icon-button text-red-500" aria-label={`Delete ${t.note}`} onClick={() => void remove(t)}><Trash2 size={17} /></button></div>)}</details>}
       </>}

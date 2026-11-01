@@ -3,9 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { isSupabaseConfigured } from "../lib/supabase";
 import BottomNav from "./BottomNav";
-import LockScreen from "./LockScreen";
 import MigrationPrompt from "./MigrationPrompt";
-import { getStoredPin } from "../hooks/useAppLock";
 
 function Splash() {
   return (
@@ -26,7 +24,6 @@ export default function RequireAuth() {
   if (!isSupabaseConfigured) {
     return (
       <>
-        {getStoredPin() ? <LockScreen /> : null}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <Outlet />
           <BottomNav />
@@ -41,7 +38,6 @@ export default function RequireAuth() {
 
   return (
     <>
-      {getStoredPin() ? <LockScreen /> : null}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <Outlet />
         <BottomNav />

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowUp, Loader2, Plus, Sparkles } from "lucide-react";
 import { useCategories, useTransactions, saveExpense, deleteExpense } from "../store/data";
 import { useStore } from "../store/store";
@@ -20,7 +21,8 @@ export default function QuickEntry() {
   const currency = useStore(s => s.currency);
   const setMonth = useStore(s => s.setMonth);
   const smartEntryEnabled = useStore(s => s.smartEntryEnabled);
-  const setSmartEntryEnabled = useStore(s => s.setSmartEntryEnabled);
+  const [params, setParams] = useSearchParams();
+  const creditEntry = params.get("add") === "credit";
 
   const [text, setText] = useState("");
   const [error, setError] = useState("");
@@ -35,23 +37,20 @@ export default function QuickEntry() {
   const [date, setDate] = useState(todayISO());
   const [categoryId, setCategoryId] = useState("");
   const manualCategory = useRef(false);
-  const [finance, setFinance] = useState<FinanceDetails>({ kind: "expense", paymentMethod: "upi" });
+  const [finance, setFinance] = useState<FinanceDetails>({ kind: "expense", paymentMethod: creditEntry ? "credit" : "upi" });
+
+  function closeManual() {
+    setOpen(false);
+    if (creditEntry) {
+      setParams(previous => { previous.delete("add"); return previous; }, { replace: true });
+      setFinance({ kind: "expense", paymentMethod: "upi" });
+    }
+  }
 
   // AI Smart Entry Preview state
   const [previewResult, setPreviewResult] = useState<LLMParseResult | null>(null);
 
-  // Extract known contacts and cards for LLM context
-  const contacts = useMemo(() => {
-    return (allTransactions ? personContacts(allTransactions) : []).map(c => c.name);
-  }, [allTransactions]);
-
-  const cards = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of allTransactions ?? []) {
-      if (t.finance?.cardName) set.add(t.finance.cardName);
-    }
-    return Array.from(set);
-  }, [allTransactions]);
+  const [previewContacts, setPreviewContacts] = useState<string[]>([]);
 
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   useEffect(() => {
@@ -72,7 +71,7 @@ export default function QuickEntry() {
     setNote("");
     setCategoryId("");
     manualCategory.current = false;
-    setOpen(false);
+    closeManual();
     setPreviewResult(null);
     pushToast({
       kind: "success",
@@ -162,6 +161,9 @@ export default function QuickEntry() {
           });
         });
 
+        const rows = allTransactions ?? [];
+        const contacts = personContacts(rows).map(c => c.name);
+        const cards = [...new Set(rows.flatMap(t => t.finance?.cardName ? [t.finance.cardName] : []))];
         const parsePromise = parseWithLLM(raw, {
           categories,
           contacts,
@@ -189,6 +191,7 @@ export default function QuickEntry() {
           handleSuccessfulSave(saved);
         } else {
           // Show Preview Card
+          setPreviewContacts(contacts);
           setPreviewResult(llmResult);
         }
       } catch (llmErr) {
@@ -247,30 +250,6 @@ export default function QuickEntry() {
             <Sparkles size={14} className="shrink-0" />
             <span className="truncate">Quick entry</span>
           </span>
-          {cloudEnabled ? (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={smartEntryEnabled}
-              aria-label="AI parsing"
-              onClick={() => setSmartEntryEnabled(!smartEntryEnabled)}
-              className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#161616] ${
-                smartEntryEnabled
-                  ? "border-teal-200 bg-teal-50 text-teal-800 dark:border-teal-900 dark:bg-teal-950/50 dark:text-teal-300"
-                  : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-              }`}
-            >
-              <span>AI</span>
-              <span className="min-w-5 text-left">{smartEntryEnabled ? "On" : "Off"}</span>
-              <span className={`inline-flex h-5 w-9 items-center rounded-full p-0.5 transition-colors ${smartEntryEnabled ? "bg-teal-600" : "bg-slate-400 dark:bg-slate-600"}`}>
-                <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${smartEntryEnabled ? "translate-x-4" : "translate-x-0"}`} />
-              </span>
-            </button>
-          ) : (
-            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-              Local mode
-            </span>
-          )}
         </div>
         {cloudEnabled && !isOnline && (
           <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">Offline now — using local parsing. Saved data will sync when you reconnect.</p>
@@ -330,11 +309,11 @@ export default function QuickEntry() {
       </div>
 
       {/* Manual Full Add Sheet */}
-      {open && (
+      {(open || creditEntry) && (
         <Sheet
-          title="Add an expense"
+          title={creditEntry ? "Add credit card expense" : "Add an expense"}
           onClose={() => {
-            if (!busy) setOpen(false);
+            if (!busy) closeManual();
           }}
         >
           <form
@@ -428,7 +407,7 @@ export default function QuickEntry() {
           result={previewResult}
           categories={categories}
           currency={currency}
-          contacts={contacts}
+          contacts={previewContacts}
           onConfirm={handlePreviewConfirm}
           onEditFull={handlePreviewEditFull}
           onCancel={() => setPreviewResult(null)}

@@ -15,7 +15,6 @@ import {
   useCategories,
 } from "../store/data";
 import { useAuth } from "../auth/AuthProvider";
-import { getStoredPin, setStoredPin } from "../hooks/useAppLock";
 import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import { getReminder, setReminder, type ReminderPref } from "../utils/reminder";
 import RecurringExpenses from "../components/RecurringExpenses";
@@ -29,7 +28,6 @@ export default function SettingsPage() {
   const categories = useCategories();
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
-  const [pin, setPin] = useState(getStoredPin() ?? "");
   const [confirmClear, setConfirmClear] = useState(false);
   const [legacyAvailable, setLegacyAvailable] = useState(false);
 
@@ -258,31 +256,6 @@ export default function SettingsPage() {
         {/* Daily reminder */}
         <ReminderCard />
 
-        {/* App lock */}
-        <Card title="App lock (PIN)">
-          <div className="flex gap-2">
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={8}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              placeholder="4–8 digit PIN"
-              aria-label="PIN"
-              className="flex-1 rounded-xl bg-slate-100 px-3 py-2.5 outline-none focus:ring-2 focus:ring-teal-500 dark:bg-slate-800"
-            />
-            <button
-              onClick={() => {
-                setStoredPin(pin.length >= 4 ? pin : null);
-                flash(pin.length >= 4 ? "PIN enabled" : "PIN removed");
-              }}
-              className="rounded-xl bg-teal-600 px-4 font-bold text-white"
-            >
-              Save
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-slate-400">Leave empty and save to disable. Lock applies on next app start, on top of your account sign-in.</p>
-        </Card>
 
         <p className="mt-6 text-center text-xs text-slate-400">
           SpendWise v2.0 · {cloudEnabled ? "Synced across your devices" : "Offline-first"}

@@ -5,8 +5,8 @@ import AlertBanner from "../components/AlertBanner";
 import SearchBar from "../components/SearchBar";
 import TransactionList from "../components/TransactionList";
 import QuickEntry from "../components/QuickEntry";
-import { Link } from "react-router-dom";
-import { Users, Wallet, ArrowUpRight } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { Users, Wallet, CreditCard } from "lucide-react";
 import { personalAmount } from "../utils/finance";
 import { formatAmount } from "../utils/format";
 import EditDialog from "../components/EditDialog";
@@ -31,6 +31,7 @@ import { monthEndDate } from "../db/types";
  * compact input dock → bottom nav. The list shrinks; the dock never scrolls.
  */
 export default function Dashboard() {
+  const location = useLocation();
   const {
     month, currency, editing, setEditing,
     search, filterCategory, dateFrom, dateTo, minAmount, maxAmount,
@@ -95,9 +96,10 @@ export default function Dashboard() {
         </div>
         <AlertBanner pct={pct} over={over} />
 
-        <div className="grid grid-cols-2 gap-3 px-4 mt-4">
-          <Link to="/people" className="shortcut-card"><Users size={20} /><span>Split & udhaar<small>Keep friends settled</small></span><ArrowUpRight size={15} /></Link>
-          <Link to="/wallet" className="shortcut-card"><Wallet size={20} /><span>Your wallet<small>UPI, cash & cards</small></span><ArrowUpRight size={15} /></Link>
+        <div className="grid grid-cols-3 gap-2 px-4 mt-3">
+          <Link to="/?add=credit" className="shortcut-card"><CreditCard size={16} /><span>Credit card</span></Link>
+          <Link to="/people?add=split" className="shortcut-card"><Users size={16} /><span>Split a bill</span></Link>
+          <Link to="/wallet" className="shortcut-card"><Wallet size={16} /><span>Your wallet</span></Link>
         </div>
         {!!transactions?.some(t => t.finance?.kind === "split") && <Link to="/people" className="surface mx-4 mt-4 flex justify-between gap-3 p-4 text-sm"><span>Your share of split bills</span><strong>{formatAmount(transactions.filter(t => t.finance?.kind === "split").reduce((s,t) => s + personalAmount(t), 0), currency)}</strong></Link>}
         <div className="section-heading px-4 mt-6 mb-1"><h2>Recent expenses</h2><span>Tap to edit</span></div>
@@ -114,7 +116,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <QuickEntry />
+      <QuickEntry key={location.search} />
 
       <EditDialog
         tx={editing}
